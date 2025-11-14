@@ -183,45 +183,60 @@ fn get_person() -> Result<Vec<Person>> {
 http_request_handler!(howto_access_handler, |request: &mut http::Request| {
     let m_persons = get_person();
 
-    let co = unsafe { request.get_module_loc_conf::<ModuleConfig>(&*addr_of!(ngx_http_howto_module)) };
-    let co = co.expect("module config is none");
+    let enabled = {
+        let co = unsafe { request.get_module_loc_conf::<ModuleConfig>(&*addr_of!(ngx_http_howto_module)) };
+        let co = co.expect("module config is none");
+        co.enabled
+    };
 
     ngx_log_debug_http!(request, "howto module enabled called");
 
-
-    request.discard_request_body();
-
-    request.set_status(http::HTTPStatus::OK);
-
-    //request.set_content_length_n(buf.len());
-    let rc = request.send_header();
-    if rc == core::Status::NGX_ERROR || rc > core::Status::NGX_OK || request.header_only() {
-        return rc;
-    }
-
-
-    match co.enabled {
+    match enabled {
         true => {
             match m_persons {
                 Ok(persons) => {
+                    request.discard_request_body();
+                    request.set_status(http::HTTPStatus::OK);
+                    // request.set_content_length_n(full_len);
+                    let rc = request.send_header();
+                    if rc == core::Status::NGX_ERROR || rc > core::Status::NGX_OK || request.header_only() {
+                        return rc;
+                    }
+
                     for person in persons {
                         ngx_log_debug_http!(request, "person: {}\n", person);
 
-                        let s = fmt::format(format_args!("{}", person));
-                        let mut buf = match request.pool().create_buffer_from_str(s) {
+                        let s = fmt::format(format_args!("{}\n", person));
+                        let mut buf = match request.pool().create_buffer_from_str(&s) {
                             Some(buf) => buf,
                             None => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),
                         };
 
-                        buf.set_last_buf(request.is_main());
-                        buf.set_last_in_chain(true);
+                        buf.set_last_buf(false);
+                        buf.set_last_in_chain(false);
 
                         let mut out = ngx_chain_t {
                             buf: buf.as_ngx_buf_mut(),
-                            next: std::ptr::null_mut(),
+                            next: std::ptr::null_mut()
                         };
+
                         request.output_filter(&mut out);
                     }
+
+                    let mut buf = match request.pool().create_buffer_from_static_str("\n") {
+                        Some(buf) => buf,
+                        None => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),
+                    };
+
+                    buf.set_last_buf(request.is_main());
+                    buf.set_last_in_chain(true);
+
+                    let mut out = ngx_chain_t {
+                        buf: buf.as_ngx_buf_mut(),
+                        next: std::ptr::null_mut()
+                    };
+
+                    request.output_filter(&mut out);
                 },
                 Err(e) => {
                     //todo!();
