@@ -14,7 +14,7 @@
       {
         defaultPackage = naersk-lib.buildPackage ./.;
         devShell = with pkgs; mkShell {
-          buildInputs = [ cargo rustc rustfmt pre-commit rustPackages.clippy  gnumake ];
+          buildInputs = [ cargo rustc rustfmt pre-commit rustPackages.clippy gnumake openssl.dev pkg-config nginx ];
           RUST_SRC_PATH = rustPlatform.rustLibSrc;
         };
       }
