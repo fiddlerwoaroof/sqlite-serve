@@ -1,14 +1,15 @@
+use std::fmt::{Display, Formatter};
+use std::fmt;
+use ngx::core::Buffer;
 use ngx::ffi::{
-    nginx_version, ngx_array_push, ngx_command_t, ngx_conf_t, ngx_http_core_module,
-    ngx_http_handler_pt, ngx_http_module_t, ngx_http_phases_NGX_HTTP_ACCESS_PHASE,
-    ngx_http_request_t, ngx_int_t, ngx_module_t, ngx_str_t, ngx_uint_t, NGX_CONF_TAKE1,
-    NGX_HTTP_LOC_CONF, NGX_HTTP_MODULE, NGX_RS_HTTP_LOC_CONF_OFFSET, NGX_RS_MODULE_SIGNATURE,
+    NGX_CONF_TAKE1, NGX_HTTP_LOC_CONF, NGX_HTTP_MODULE, NGX_RS_HTTP_LOC_CONF_OFFSET, NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_array_push, ngx_buf_t, ngx_chain_t, ngx_command_t, ngx_conf_t, ngx_http_core_module, ngx_http_discard_request_body, ngx_http_handler_pt, ngx_http_module_t, ngx_http_phases_NGX_HTTP_ACCESS_PHASE, ngx_http_request_t, ngx_int_t, ngx_module_t, ngx_str_t, ngx_uint_t
 };
 use ngx::http::{HTTPModule, MergeConfigError};
 use ngx::{core, core::Status, http};
 use ngx::{http_request_handler, ngx_log_debug_http, ngx_modules, ngx_null_command, ngx_string};
 use std::os::raw::{c_char, c_void};
 use std::ptr::addr_of;
+use rusqlite::{Connection, Result};
 
 struct Module;
 
@@ -66,7 +67,7 @@ impl http::Merge for ModuleConfig {
 
 // Create our "C" module context with function entrypoints for NGINX event loop. This "binds" our
 // HTTPModule implementation to functions callable from C.
-#[no_mangle]
+#[unsafe(no_mangle)]
 static ngx_http_howto_module_ctx: ngx_http_module_t = ngx_http_module_t {
     preconfiguration: Some(Module::preconfiguration),
     postconfiguration: Some(Module::postconfiguration),
@@ -83,7 +84,7 @@ static ngx_http_howto_module_ctx: ngx_http_module_t = ngx_http_module_t {
 // this structure and setting our custom configuration command (defined below).
 ngx_modules!(ngx_http_howto_module);
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut ngx_http_howto_module: ngx_module_t = ngx_module_t {
     ctx_index: ngx_uint_t::max_value(),
     index: ngx_uint_t::max_value(),
@@ -117,7 +118,7 @@ pub static mut ngx_http_howto_module: ngx_module_t = ngx_module_t {
 
 // Register and allocate our command structures for directive generation and eventual storage. Be
 // sure to terminate the array with the ngx_null_command! macro.
-#[no_mangle]
+#[unsafe(no_mangle)]
 static mut ngx_http_howto_commands: [ngx_command_t; 2] = [
     ngx_command_t {
         name: ngx_string!("howto"),
@@ -130,7 +131,7 @@ static mut ngx_http_howto_commands: [ngx_command_t; 2] = [
     ngx_null_command!(),
 ];
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn ngx_http_howto_commands_set_method(
     cf: *mut ngx_conf_t,
     _cmd: *mut ngx_command_t,
@@ -146,25 +147,97 @@ extern "C" fn ngx_http_howto_commands_set_method(
     std::ptr::null_mut()
 }
 
+#[derive(Debug)]
+struct Person {
+    id: u64,
+    name: String,
+    address: String
+}
+
+impl Display for Person {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Person ({}, {}, {})", self.id, self.name, self.address)
+    }
+}
+
+fn get_person() -> Result<Vec<Person>> {
+    let conn = Connection::open("db.sqlite3")?;
+    let mut stmt = conn.prepare("SELECT id, name, address FROM person")?;
+
+    let person_iter = stmt.query_map([], |row| {
+        Ok(Person {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            address: row.get(2)?,
+        })
+    })?;
+
+    person_iter.collect()
+}
+
 // Implement a request handler. Use the convenience macro, the http_request_handler! macro will
 // convert the native NGINX request into a Rust Request instance as well as define an extern C
 // function callable from NGINX.
 //
 // The function body is implemented as a Rust closure.
 http_request_handler!(howto_access_handler, |request: &mut http::Request| {
+    let m_persons = get_person();
+
     let co = unsafe { request.get_module_loc_conf::<ModuleConfig>(&*addr_of!(ngx_http_howto_module)) };
     let co = co.expect("module config is none");
 
     ngx_log_debug_http!(request, "howto module enabled called");
 
+
+    request.discard_request_body();
+
+    request.set_status(http::HTTPStatus::OK);
+
+    //request.set_content_length_n(buf.len());
+    let rc = request.send_header();
+    if rc == core::Status::NGX_ERROR || rc > core::Status::NGX_OK || request.header_only() {
+        return rc;
+    }
+
+
     match co.enabled {
         true => {
-            let method = request.method();
+            match m_persons {
+                Ok(persons) => {
+                    for person in persons {
+                        ngx_log_debug_http!(request, "person: {}\n", person);
 
-            if method.as_str() == co.method {
-                return core::Status::NGX_OK;
+                        let s = fmt::format(format_args!("{}", person));
+                        let mut buf = match request.pool().create_buffer_from_str(s) {
+                            Some(buf) => buf,
+                            None => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),
+                        };
+
+                        buf.set_last_buf(request.is_main());
+                        buf.set_last_in_chain(true);
+
+                        let mut out = ngx_chain_t {
+                            buf: buf.as_ngx_buf_mut(),
+                            next: std::ptr::null_mut(),
+                        };
+                        request.output_filter(&mut out);
+                    }
+                },
+                Err(e) => {
+                    //todo!();
+                    ngx_log_debug_http!(request, "failed to find persons: {}", e);
+
+                    return http::HTTPStatus::INTERNAL_SERVER_ERROR.into()
+                }
             }
-            http::HTTPStatus::FORBIDDEN.into()
+
+
+            // let method = request.method();
+
+            // if method.as_str() == co.method {
+            //     return core::Status::NGX_OK;
+            // }
+            Status::NGX_DONE
         }
         false => core::Status::NGX_OK,
     }

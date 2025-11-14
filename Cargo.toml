@@ -8,3 +8,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 ngx = "0.4.1"
+rusqlite = "0.37.0"
