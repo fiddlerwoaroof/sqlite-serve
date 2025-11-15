@@ -1,0 +1,16 @@
+<div class="book-card">
+    <div class="book-header">
+        <h3 class="book-title">{{title}}</h3>
+        <div class="book-rating">⭐ {{rating}}</div>
+    </div>
+    <p class="book-author">by {{author}}</p>
+    <p class="book-description">{{description}}</p>
+    <div class="book-details">
+        <span class="book-genre">{{genre}}</span>
+        <span class="book-year">{{year}}</span>
+        {{#if isbn}}
+        <span class="book-isbn">ISBN: {{isbn}}</span>
+        {{/if}}
+    </div>
+</div>
+

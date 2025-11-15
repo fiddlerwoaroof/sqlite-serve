@@ -1,0 +1,107 @@
+{{> header}}
+
+<style>
+    .book-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+    .book-card {
+        background: #fff;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        padding: 1.5rem;
+        transition: all 0.3s;
+    }
+    .book-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 16px rgba(59, 130, 246, 0.2);
+        border-color: #3b82f6;
+    }
+    .book-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 0.5rem;
+    }
+    .book-title {
+        color: #2d3748;
+        font-size: 1.25rem;
+        margin-bottom: 0.25rem;
+        flex: 1;
+    }
+    .book-rating {
+        background: #fef3c7;
+        color: #92400e;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.9rem;
+        white-space: nowrap;
+        margin-left: 0.5rem;
+    }
+    .book-author {
+        color: #3b82f6;
+        font-weight: 500;
+        margin-bottom: 0.75rem;
+    }
+    .book-description {
+        color: #4a5568;
+        margin-bottom: 1rem;
+        line-height: 1.5;
+    }
+    .book-details {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+    }
+    .book-genre {
+        background: #3b82f6;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-weight: 500;
+    }
+    .book-year {
+        background: #e9ecef;
+        color: #495057;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+    }
+    .book-isbn {
+        color: #6c757d;
+        font-family: monospace;
+        font-size: 0.8rem;
+    }
+    .category-header {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+    }
+    .category-header h2 {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+</style>
+
+<div class="category-header">
+    <h2>🎓 Computer Science Books</h2>
+    <p>Fundamental concepts, algorithms, and theoretical computer science</p>
+</div>
+
+<div class="book-grid">
+    {{#each results}}
+        {{> book_card}}
+    {{/each}}
+</div>
+
+{{#unless results}}
+    <p style="text-align: center; color: #6c757d; padding: 2rem;">No computer science books found.</p>
+{{/unless}}
+
+{{> footer}}
+

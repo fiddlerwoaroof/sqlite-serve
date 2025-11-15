@@ -1,10 +1,10 @@
 use handlebars::Handlebars;
 use ngx::core::Buffer;
 use ngx::ffi::{
-    NGX_CONF_TAKE1, NGX_HTTP_LOC_CONF, NGX_HTTP_MODULE, NGX_HTTP_LOC_CONF_OFFSET,
-    NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_array_push, ngx_chain_t, ngx_command_t,
-    ngx_conf_t, ngx_http_handler_pt, ngx_http_module_t,
-    ngx_http_phases_NGX_HTTP_ACCESS_PHASE, ngx_int_t, ngx_module_t, ngx_str_t, ngx_uint_t,
+    NGX_CONF_TAKE1, NGX_HTTP_LOC_CONF, NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE,
+    NGX_HTTP_LOC_CONF_OFFSET, NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_chain_t,
+    ngx_command_t, ngx_conf_t, ngx_http_module_t, ngx_int_t, ngx_module_t, ngx_str_t,
+    ngx_uint_t,
 };
 use ngx::http::{
     HttpModule, HttpModuleLocationConf, HttpModuleMainConf, MergeConfigError, NgxHttpCoreModule,
@@ -25,22 +25,8 @@ impl http::HttpModule for Module {
         unsafe { &*addr_of!(ngx_http_howto_module) }
     }
 
-    unsafe extern "C" fn postconfiguration(cf: *mut ngx_conf_t) -> ngx_int_t {
-        unsafe {
-            let htcf =
-                NgxHttpCoreModule::main_conf_mut(&*cf).expect("failed to get core main conf");
-
-            let h = ngx_array_push(
-                &mut htcf.phases[ngx_http_phases_NGX_HTTP_ACCESS_PHASE as usize].handlers,
-            ) as *mut ngx_http_handler_pt;
-            if h.is_null() {
-                return core::Status::NGX_ERROR.into();
-            }
-
-            // set an Access phase handler
-            *h = Some(howto_access_handler);
-            core::Status::NGX_OK.into()
-        }
+    unsafe extern "C" fn postconfiguration(_cf: *mut ngx_conf_t) -> ngx_int_t {
+        core::Status::NGX_OK.into()
     }
 }
 
@@ -49,12 +35,32 @@ unsafe impl HttpModuleLocationConf for Module {
     type LocationConf = ModuleConfig;
 }
 
+// Implement HttpModuleMainConf to define our global configuration
+unsafe impl HttpModuleMainConf for Module {
+    type MainConf = MainConfig;
+}
+
 // Create a ModuleConfig to save our configuration state.
 #[derive(Debug, Default)]
 struct ModuleConfig {
     db_path: String,
     query: String,
     template_path: String,
+}
+
+// Global configuration for shared templates
+#[derive(Debug, Default)]
+struct MainConfig {
+    global_templates_dir: String,
+}
+
+impl http::Merge for MainConfig {
+    fn merge(&mut self, prev: &MainConfig) -> Result<(), MergeConfigError> {
+        if self.global_templates_dir.is_empty() {
+            self.global_templates_dir = prev.global_templates_dir.clone();
+        }
+        Ok(())
+    }
 }
 
 // Implement our Merge trait to merge configuration with higher layers.
@@ -83,8 +89,8 @@ impl http::Merge for ModuleConfig {
 static ngx_http_howto_module_ctx: ngx_http_module_t = ngx_http_module_t {
     preconfiguration: Some(Module::preconfiguration),
     postconfiguration: Some(Module::postconfiguration),
-    create_main_conf: None,
-    init_main_conf: None,
+    create_main_conf: Some(Module::create_main_conf),
+    init_main_conf: Some(Module::init_main_conf),
     create_srv_conf: None,
     merge_srv_conf: None,
     create_loc_conf: Some(Module::create_loc_conf),
@@ -133,7 +139,15 @@ pub static mut ngx_http_howto_module: ngx_module_t = ngx_module_t {
 // sure to terminate the array with an empty command.
 #[unsafe(no_mangle)]
 #[allow(non_upper_case_globals)]
-static mut ngx_http_howto_commands: [ngx_command_t; 4] = [
+static mut ngx_http_howto_commands: [ngx_command_t; 5] = [
+    ngx_command_t {
+        name: ngx_string!("sqlite_global_templates"),
+        type_: (NGX_HTTP_MAIN_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
+        set: Some(ngx_http_howto_commands_set_global_templates),
+        conf: 0, // Main conf offset
+        offset: 0,
+        post: std::ptr::null_mut(),
+    },
     ngx_command_t {
         name: ngx_string!("sqlite_db"),
         type_: (NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
@@ -170,6 +184,21 @@ static mut ngx_http_howto_commands: [ngx_command_t; 4] = [
         post: std::ptr::null_mut(),
     },
 ];
+
+#[unsafe(no_mangle)]
+extern "C" fn ngx_http_howto_commands_set_global_templates(
+    cf: *mut ngx_conf_t,
+    _cmd: *mut ngx_command_t,
+    conf: *mut c_void,
+) -> *mut c_char {
+    unsafe {
+        let conf = &mut *(conf as *mut MainConfig);
+        let args = (*(*cf).args).elts as *mut ngx_str_t;
+        conf.global_templates_dir = (*args.add(1)).to_string();
+    };
+
+    std::ptr::null_mut()
+}
 
 #[unsafe(no_mangle)]
 extern "C" fn ngx_http_howto_commands_set_db_path(
@@ -211,9 +240,49 @@ extern "C" fn ngx_http_howto_commands_set_template_path(
         let conf = &mut *(conf as *mut ModuleConfig);
         let args = (*(*cf).args).elts as *mut ngx_str_t;
         conf.template_path = (*args.add(1)).to_string();
+        
+        // Set the content handler for this location
+        let clcf = NgxHttpCoreModule::location_conf_mut(&*cf)
+            .expect("failed to get core location conf");
+        clcf.handler = Some(howto_access_handler);
     };
 
     std::ptr::null_mut()
+}
+
+// Load all .hbs templates from a directory into the Handlebars registry
+fn load_templates_from_dir(reg: &mut Handlebars, dir_path: &str) -> std::io::Result<usize> {
+    use std::fs;
+    use std::path::Path;
+
+    let dir = Path::new(dir_path);
+    if !dir.exists() || !dir.is_dir() {
+        return Ok(0);
+    }
+
+    let mut count = 0;
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        
+        if path.is_file() {
+            if let Some(ext) = path.extension() {
+                if ext == "hbs" {
+                    if let Some(stem) = path.file_stem() {
+                        if let Some(name) = stem.to_str() {
+                            if let Err(e) = reg.register_template_file(name, &path) {
+                                eprintln!("Failed to register template {}: {}", path.display(), e);
+                            } else {
+                                count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(count)
 }
 
 // Execute a generic SQL query and return results as JSON-compatible data
@@ -271,6 +340,33 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
 
     ngx_log_debug_http!(request, "sqlite module handler called");
 
+    // Resolve template path relative to document root and location
+    let core_loc_conf =
+        NgxHttpCoreModule::location_conf(request).expect("failed to get core location conf");
+    let doc_root = match (*core_loc_conf).root.to_str() {
+        Ok(s) => s,
+        Err(e) => {
+            ngx_log_debug_http!(request, "failed to decode root path: {}", e);
+            return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
+        }
+    };
+    let uri = match request.path().to_str() {
+        Ok(s) => s,
+        Err(e) => {
+            ngx_log_debug_http!(request, "failed to decode URI path: {}", e);
+            return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
+        }
+    };
+    let template_full_path = format!("{}{}/{}", doc_root, uri, co.template_path);
+
+    ngx_log_debug_http!(request, "resolved template path: {}", template_full_path);
+
+    // Get the directory containing the main template for local templates
+    let template_dir = std::path::Path::new(&template_full_path)
+        .parent()
+        .and_then(|p| p.to_str())
+        .unwrap_or("");
+
     // Execute the configured SQL query
     let results = match execute_query(&co.db_path, &co.query) {
         Ok(results) => results,
@@ -280,12 +376,39 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
         }
     };
 
-    // Setup Handlebars and register the configured template
+    // Setup Handlebars and load templates
     let mut reg = Handlebars::new();
-    match reg.register_template_file("template", &co.template_path) {
-        Ok(_) => (),
+    
+    // First, load global templates if configured
+    let main_conf = Module::main_conf(request).expect("main config is none");
+    if !main_conf.global_templates_dir.is_empty() {
+        match load_templates_from_dir(&mut reg, &main_conf.global_templates_dir) {
+            Ok(count) => {
+                ngx_log_debug_http!(request, "loaded {} global templates from {}", count, main_conf.global_templates_dir);
+            }
+            Err(e) => {
+                ngx_log_debug_http!(request, "warning: failed to load global templates: {}", e);
+            }
+        }
+    }
+
+    // Then, load local templates (these override global ones)
+    match load_templates_from_dir(&mut reg, template_dir) {
+        Ok(count) => {
+            ngx_log_debug_http!(request, "loaded {} local templates from {}", count, template_dir);
+        }
         Err(e) => {
-            ngx_log_debug_http!(request, "failed to load template: {}", e);
+            ngx_log_debug_http!(request, "warning: failed to load local templates: {}", e);
+        }
+    }
+
+    // Finally, register the main template (overriding if it was loaded from directories)
+    match reg.register_template_file("template", &template_full_path) {
+        Ok(_) => {
+            ngx_log_debug_http!(request, "registered main template: {}", template_full_path);
+        },
+        Err(e) => {
+            ngx_log_debug_http!(request, "failed to load main template: {}", e);
             return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
         }
     }
