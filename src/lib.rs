@@ -307,5 +307,6 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
         return rc;
     }
 
-    request.output_filter(&mut out)
+    request.output_filter(&mut out);
+    Status::NGX_DONE
 });
