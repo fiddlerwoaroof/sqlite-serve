@@ -13,8 +13,6 @@ use ngx::{http_request_handler, ngx_log_debug_http, ngx_modules, ngx_null_comman
 use rusqlite::{Connection, Result};
 use serde;
 use serde_json::json;
-use std::fmt;
-use std::fmt::{Display, Formatter};
 use std::os::raw::{c_char, c_void};
 use std::ptr::addr_of;
 
@@ -28,46 +26,46 @@ impl http::HTTPModule for Module {
     type LocConf = ModuleConfig;
 
     unsafe extern "C" fn postconfiguration(cf: *mut ngx_conf_t) -> ngx_int_t {
-        let htcf = http::ngx_http_conf_get_module_main_conf(cf, &*addr_of!(ngx_http_core_module));
+        unsafe {
+            let htcf = http::ngx_http_conf_get_module_main_conf(cf, &*addr_of!(ngx_http_core_module));
 
-        let h = ngx_array_push(
-            &mut (*htcf).phases[ngx_http_phases_NGX_HTTP_ACCESS_PHASE as usize].handlers,
-        ) as *mut ngx_http_handler_pt;
-        if h.is_null() {
-            return core::Status::NGX_ERROR.into();
+            let h = ngx_array_push(
+                &mut (*htcf).phases[ngx_http_phases_NGX_HTTP_ACCESS_PHASE as usize].handlers,
+            ) as *mut ngx_http_handler_pt;
+            if h.is_null() {
+                return core::Status::NGX_ERROR.into();
+            }
+
+            // set an Access phase handler
+            *h = Some(howto_access_handler);
+            core::Status::NGX_OK.into()
         }
-
-        // set an Access phase handler
-        *h = Some(howto_access_handler);
-        core::Status::NGX_OK.into()
     }
 }
 
 // Create a ModuleConfig to save our configuration state.
 #[derive(Debug, Default)]
 struct ModuleConfig {
-    enabled: bool,
-    method: String,
+    db_path: String,
+    query: String,
+    template_path: String,
 }
 
 // Implement our Merge trait to merge configuration with higher layers.
 impl http::Merge for ModuleConfig {
     fn merge(&mut self, prev: &ModuleConfig) -> Result<(), MergeConfigError> {
-        if prev.enabled {
-            self.enabled = true;
+        if self.db_path.is_empty() {
+            self.db_path = prev.db_path.clone();
         }
 
-        if self.method.is_empty() {
-            self.method = String::from(if !prev.method.is_empty() {
-                &prev.method
-            } else {
-                ""
-            });
+        if self.query.is_empty() {
+            self.query = prev.query.clone();
         }
 
-        if self.enabled && self.method.is_empty() {
-            return Err(MergeConfigError::NoValue);
+        if self.template_path.is_empty() {
+            self.template_path = prev.template_path.clone();
         }
+
         Ok(())
     }
 }
@@ -126,11 +124,27 @@ pub static mut ngx_http_howto_module: ngx_module_t = ngx_module_t {
 // Register and allocate our command structures for directive generation and eventual storage. Be
 // sure to terminate the array with the ngx_null_command! macro.
 #[unsafe(no_mangle)]
-static mut ngx_http_howto_commands: [ngx_command_t; 2] = [
+static mut ngx_http_howto_commands: [ngx_command_t; 4] = [
     ngx_command_t {
-        name: ngx_string!("howto"),
+        name: ngx_string!("sqlite_db"),
         type_: (NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
-        set: Some(ngx_http_howto_commands_set_method),
+        set: Some(ngx_http_howto_commands_set_db_path),
+        conf: NGX_RS_HTTP_LOC_CONF_OFFSET,
+        offset: 0,
+        post: std::ptr::null_mut(),
+    },
+    ngx_command_t {
+        name: ngx_string!("sqlite_query"),
+        type_: (NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
+        set: Some(ngx_http_howto_commands_set_query),
+        conf: NGX_RS_HTTP_LOC_CONF_OFFSET,
+        offset: 0,
+        post: std::ptr::null_mut(),
+    },
+    ngx_command_t {
+        name: ngx_string!("sqlite_template"),
+        type_: (NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
+        set: Some(ngx_http_howto_commands_set_template_path),
         conf: NGX_RS_HTTP_LOC_CONF_OFFSET,
         offset: 0,
         post: std::ptr::null_mut(),
@@ -139,7 +153,7 @@ static mut ngx_http_howto_commands: [ngx_command_t; 2] = [
 ];
 
 #[unsafe(no_mangle)]
-extern "C" fn ngx_http_howto_commands_set_method(
+extern "C" fn ngx_http_howto_commands_set_db_path(
     cf: *mut ngx_conf_t,
     _cmd: *mut ngx_command_t,
     conf: *mut c_void,
@@ -147,39 +161,80 @@ extern "C" fn ngx_http_howto_commands_set_method(
     unsafe {
         let conf = &mut *(conf as *mut ModuleConfig);
         let args = (*(*cf).args).elts as *mut ngx_str_t;
-        conf.enabled = true;
-        conf.method = (*args.add(1)).to_string();
+        conf.db_path = (*args.add(1)).to_string();
     };
 
     std::ptr::null_mut()
 }
 
-#[derive(Debug, serde::Serialize)]
-struct Person {
-    id: u64,
-    name: String,
-    address: String,
+#[unsafe(no_mangle)]
+extern "C" fn ngx_http_howto_commands_set_query(
+    cf: *mut ngx_conf_t,
+    _cmd: *mut ngx_command_t,
+    conf: *mut c_void,
+) -> *mut c_char {
+    unsafe {
+        let conf = &mut *(conf as *mut ModuleConfig);
+        let args = (*(*cf).args).elts as *mut ngx_str_t;
+        conf.query = (*args.add(1)).to_string();
+    };
+
+    std::ptr::null_mut()
 }
 
-impl Display for Person {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Person ({}, {}, {})", self.id, self.name, self.address)
-    }
+#[unsafe(no_mangle)]
+extern "C" fn ngx_http_howto_commands_set_template_path(
+    cf: *mut ngx_conf_t,
+    _cmd: *mut ngx_command_t,
+    conf: *mut c_void,
+) -> *mut c_char {
+    unsafe {
+        let conf = &mut *(conf as *mut ModuleConfig);
+        let args = (*(*cf).args).elts as *mut ngx_str_t;
+        conf.template_path = (*args.add(1)).to_string();
+    };
+
+    std::ptr::null_mut()
 }
 
-fn get_person() -> Result<Vec<Person>> {
-    let conn = Connection::open("db.sqlite3")?;
-    let mut stmt = conn.prepare("SELECT id, name, address FROM person")?;
+// Execute a generic SQL query and return results as JSON-compatible data
+fn execute_query(db_path: &str, query: &str) -> Result<Vec<std::collections::HashMap<String, serde_json::Value>>> {
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(query)?;
+    
+    let column_count = stmt.column_count();
+    let column_names: Vec<String> = (0..column_count)
+        .map(|i| stmt.column_name(i).unwrap_or("").to_string())
+        .collect();
 
-    let person_iter = stmt.query_map([], |row| {
-        Ok(Person {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            address: row.get(2)?,
-        })
+    let rows = stmt.query_map([], |row| {
+        let mut map = std::collections::HashMap::new();
+        for (i, col_name) in column_names.iter().enumerate() {
+            let value: serde_json::Value = match row.get_ref(i)? {
+                rusqlite::types::ValueRef::Null => serde_json::Value::Null,
+                rusqlite::types::ValueRef::Integer(v) => serde_json::Value::Number(v.into()),
+                rusqlite::types::ValueRef::Real(v) => {
+                    serde_json::Number::from_f64(v)
+                        .map(serde_json::Value::Number)
+                        .unwrap_or(serde_json::Value::Null)
+                }
+                rusqlite::types::ValueRef::Text(v) => {
+                    serde_json::Value::String(String::from_utf8_lossy(v).to_string())
+                }
+                rusqlite::types::ValueRef::Blob(v) => {
+                    // Convert blob to hex string
+                    let hex_string = v.iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<String>();
+                    serde_json::Value::String(hex_string)
+                }
+            };
+            map.insert(col_name.clone(), value);
+        }
+        Ok(map)
     })?;
 
-    person_iter.collect()
+    rows.collect()
 }
 
 // Implement a request handler. Use the convenience macro, the http_request_handler! macro will
@@ -188,73 +243,69 @@ fn get_person() -> Result<Vec<Person>> {
 //
 // The function body is implemented as a Rust closure.
 http_request_handler!(howto_access_handler, |request: &mut http::Request| {
-    let m_persons = get_person();
+    let co = unsafe {
+        request.get_module_loc_conf::<ModuleConfig>(&*addr_of!(ngx_http_howto_module))
+    };
+    let co = co.expect("module config is none");
 
-    let enabled = {
-        let co = unsafe {
-            request.get_module_loc_conf::<ModuleConfig>(&*addr_of!(ngx_http_howto_module))
-        };
-        let co = co.expect("module config is none");
-        co.enabled
+    // Check if all required config values are set
+    if co.db_path.is_empty() || co.query.is_empty() || co.template_path.is_empty() {
+        return core::Status::NGX_OK;
+    }
+
+    ngx_log_debug_http!(request, "sqlite module handler called");
+
+    // Execute the configured SQL query
+    let results = match execute_query(&co.db_path, &co.query) {
+        Ok(results) => results,
+        Err(e) => {
+            ngx_log_debug_http!(request, "failed to execute query: {}", e);
+            return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
+        }
     };
 
-    ngx_log_debug_http!(request, "howto module enabled called");
+    // Setup Handlebars and register the configured template
     let mut reg = Handlebars::new();
-    match reg.register_template_file("person", "./person.hbs") {
+    match reg.register_template_file("template", &co.template_path) {
         Ok(_) => (),
-        Err(_) => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),
-    }
-
-    match enabled {
-        true => {
-            match m_persons {
-                Ok(persons) => {
-                    let body = match reg.render("person", &json!({"persons": persons})) {
-                        Ok(body) => body,
-                        Err(_) => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),
-                    };
-
-                    let mut buf = match request.pool().create_buffer_from_str(&body) {
-                        Some(buf) => buf,
-                        None => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),
-                    };
-
-                    buf.set_last_buf(request.is_main());
-                    buf.set_last_in_chain(true);
-
-                    let mut out = ngx_chain_t {
-                        buf: buf.as_ngx_buf_mut(),
-                        next: std::ptr::null_mut(),
-                    };
-
-                    request.discard_request_body();
-                    request.set_status(http::HTTPStatus::OK);
-                    // request.set_content_length_n(full_len);
-                    let rc = request.send_header();
-                    if rc == core::Status::NGX_ERROR
-                        || rc > core::Status::NGX_OK
-                        || request.header_only()
-                    {
-                        return rc;
-                    }
-
-                    request.output_filter(&mut out);
-                }
-                Err(e) => {
-                    //todo!();
-                    ngx_log_debug_http!(request, "failed to find persons: {}", e);
-
-                    return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
-                }
-            }
-
-            // let method = request.method();
-
-            // if method.as_str() == co.method {
-            //     return core::Status::NGX_OK;
-            // }
-            Status::NGX_DONE
+        Err(e) => {
+            ngx_log_debug_http!(request, "failed to load template: {}", e);
+            return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
         }
-        false => core::Status::NGX_OK,
     }
+
+    // Render the template with query results
+    let body = match reg.render("template", &json!({"results": results})) {
+        Ok(body) => body,
+        Err(e) => {
+            ngx_log_debug_http!(request, "failed to render template: {}", e);
+            return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
+        }
+    };
+
+    // Create output buffer
+    let mut buf = match request.pool().create_buffer_from_str(&body) {
+        Some(buf) => buf,
+        None => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),
+    };
+
+    buf.set_last_buf(request.is_main());
+    buf.set_last_in_chain(true);
+
+    let mut out = ngx_chain_t {
+        buf: buf.as_ngx_buf_mut(),
+        next: std::ptr::null_mut(),
+    };
+
+    request.discard_request_body();
+    request.set_status(http::HTTPStatus::OK);
+    let rc = request.send_header();
+    if rc == core::Status::NGX_ERROR
+        || rc > core::Status::NGX_OK
+        || request.header_only()
+    {
+        return rc;
+    }
+
+    request.output_filter(&mut out)
 });
