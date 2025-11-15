@@ -1,15 +1,16 @@
 use handlebars::Handlebars;
 use ngx::core::Buffer;
 use ngx::ffi::{
-    NGX_CONF_TAKE1, NGX_HTTP_LOC_CONF, NGX_HTTP_MODULE, NGX_RS_HTTP_LOC_CONF_OFFSET,
+    NGX_CONF_TAKE1, NGX_HTTP_LOC_CONF, NGX_HTTP_MODULE, NGX_HTTP_LOC_CONF_OFFSET,
     NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_array_push, ngx_chain_t, ngx_command_t,
-    ngx_conf_t, ngx_http_core_module, ngx_http_handler_pt,
-    ngx_http_module_t, ngx_http_phases_NGX_HTTP_ACCESS_PHASE, ngx_http_request_t, ngx_int_t,
-    ngx_module_t, ngx_str_t, ngx_uint_t,
+    ngx_conf_t, ngx_http_handler_pt, ngx_http_module_t,
+    ngx_http_phases_NGX_HTTP_ACCESS_PHASE, ngx_int_t, ngx_module_t, ngx_str_t, ngx_uint_t,
 };
-use ngx::http::{HTTPModule, MergeConfigError};
+use ngx::http::{
+    HttpModule, HttpModuleLocationConf, HttpModuleMainConf, MergeConfigError, NgxHttpCoreModule,
+};
 use ngx::{core, core::Status, http};
-use ngx::{http_request_handler, ngx_log_debug_http, ngx_modules, ngx_null_command, ngx_string};
+use ngx::{http_request_handler, ngx_log_debug_http, ngx_modules, ngx_string};
 use rusqlite::{Connection, Result};
 use serde_json::json;
 use std::os::raw::{c_char, c_void};
@@ -17,19 +18,20 @@ use std::ptr::addr_of;
 
 struct Module;
 
-// Implement our HTTPModule trait, we're creating a postconfiguration method to install our
+// Implement our HttpModule trait, we're creating a postconfiguration method to install our
 // handler's Access phase function.
-impl http::HTTPModule for Module {
-    type MainConf = ();
-    type SrvConf = ();
-    type LocConf = ModuleConfig;
+impl http::HttpModule for Module {
+    fn module() -> &'static ngx_module_t {
+        unsafe { &*addr_of!(ngx_http_howto_module) }
+    }
 
     unsafe extern "C" fn postconfiguration(cf: *mut ngx_conf_t) -> ngx_int_t {
         unsafe {
-            let htcf = http::ngx_http_conf_get_module_main_conf(cf, &*addr_of!(ngx_http_core_module));
+            let htcf =
+                NgxHttpCoreModule::main_conf_mut(&*cf).expect("failed to get core main conf");
 
             let h = ngx_array_push(
-                &mut (*htcf).phases[ngx_http_phases_NGX_HTTP_ACCESS_PHASE as usize].handlers,
+                &mut htcf.phases[ngx_http_phases_NGX_HTTP_ACCESS_PHASE as usize].handlers,
             ) as *mut ngx_http_handler_pt;
             if h.is_null() {
                 return core::Status::NGX_ERROR.into();
@@ -40,6 +42,11 @@ impl http::HTTPModule for Module {
             core::Status::NGX_OK.into()
         }
     }
+}
+
+// Implement HttpModuleLocationConf to define our location-specific configuration
+unsafe impl HttpModuleLocationConf for Module {
+    type LocationConf = ModuleConfig;
 }
 
 // Create a ModuleConfig to save our configuration state.
@@ -70,15 +77,16 @@ impl http::Merge for ModuleConfig {
 }
 
 // Create our "C" module context with function entrypoints for NGINX event loop. This "binds" our
-// HTTPModule implementation to functions callable from C.
+// HttpModule implementation to functions callable from C.
 #[unsafe(no_mangle)]
+#[allow(non_upper_case_globals)]
 static ngx_http_howto_module_ctx: ngx_http_module_t = ngx_http_module_t {
     preconfiguration: Some(Module::preconfiguration),
     postconfiguration: Some(Module::postconfiguration),
-    create_main_conf: Some(Module::create_main_conf),
-    init_main_conf: Some(Module::init_main_conf),
-    create_srv_conf: Some(Module::create_srv_conf),
-    merge_srv_conf: Some(Module::merge_srv_conf),
+    create_main_conf: None,
+    init_main_conf: None,
+    create_srv_conf: None,
+    merge_srv_conf: None,
     create_loc_conf: Some(Module::create_loc_conf),
     merge_loc_conf: Some(Module::merge_loc_conf),
 };
@@ -89,6 +97,7 @@ static ngx_http_howto_module_ctx: ngx_http_module_t = ngx_http_module_t {
 ngx_modules!(ngx_http_howto_module);
 
 #[unsafe(no_mangle)]
+#[allow(non_upper_case_globals)]
 pub static mut ngx_http_howto_module: ngx_module_t = ngx_module_t {
     ctx_index: ngx_uint_t::max_value(),
     index: ngx_uint_t::max_value(),
@@ -121,14 +130,15 @@ pub static mut ngx_http_howto_module: ngx_module_t = ngx_module_t {
 };
 
 // Register and allocate our command structures for directive generation and eventual storage. Be
-// sure to terminate the array with the ngx_null_command! macro.
+// sure to terminate the array with an empty command.
 #[unsafe(no_mangle)]
+#[allow(non_upper_case_globals)]
 static mut ngx_http_howto_commands: [ngx_command_t; 4] = [
     ngx_command_t {
         name: ngx_string!("sqlite_db"),
         type_: (NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
         set: Some(ngx_http_howto_commands_set_db_path),
-        conf: NGX_RS_HTTP_LOC_CONF_OFFSET,
+        conf: NGX_HTTP_LOC_CONF_OFFSET,
         offset: 0,
         post: std::ptr::null_mut(),
     },
@@ -136,7 +146,7 @@ static mut ngx_http_howto_commands: [ngx_command_t; 4] = [
         name: ngx_string!("sqlite_query"),
         type_: (NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
         set: Some(ngx_http_howto_commands_set_query),
-        conf: NGX_RS_HTTP_LOC_CONF_OFFSET,
+        conf: NGX_HTTP_LOC_CONF_OFFSET,
         offset: 0,
         post: std::ptr::null_mut(),
     },
@@ -144,11 +154,21 @@ static mut ngx_http_howto_commands: [ngx_command_t; 4] = [
         name: ngx_string!("sqlite_template"),
         type_: (NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
         set: Some(ngx_http_howto_commands_set_template_path),
-        conf: NGX_RS_HTTP_LOC_CONF_OFFSET,
+        conf: NGX_HTTP_LOC_CONF_OFFSET,
         offset: 0,
         post: std::ptr::null_mut(),
     },
-    ngx_null_command!(),
+    ngx_command_t {
+        name: ngx_str_t {
+            len: 0,
+            data: std::ptr::null_mut(),
+        },
+        type_: 0,
+        set: None,
+        conf: 0,
+        offset: 0,
+        post: std::ptr::null_mut(),
+    },
 ];
 
 #[unsafe(no_mangle)]
@@ -242,10 +262,7 @@ fn execute_query(db_path: &str, query: &str) -> Result<Vec<std::collections::Has
 //
 // The function body is implemented as a Rust closure.
 http_request_handler!(howto_access_handler, |request: &mut http::Request| {
-    let co = unsafe {
-        request.get_module_loc_conf::<ModuleConfig>(&*addr_of!(ngx_http_howto_module))
-    };
-    let co = co.expect("module config is none");
+    let co = Module::location_conf(request).expect("module config is none");
 
     // Check if all required config values are set
     if co.db_path.is_empty() || co.query.is_empty() || co.template_path.is_empty() {
