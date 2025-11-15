@@ -8,13 +8,49 @@ The sqlite-serve module supports parameterized SQL queries using nginx variables
 
 Add parameters to SQL queries. Can be used multiple times to add multiple parameters.
 
-**Syntax:** `sqlite_param variable_or_value;`  
+**Syntax:**  
+- Positional: `sqlite_param variable_or_value;`  
+- Named: `sqlite_param :param_name variable_or_value;`  
+
 **Context:** `location`  
-**Multiple:** Yes (order matches `?` placeholders in query)
+**Multiple:** Yes  
+
+**Note:** Positional parameters match `?` placeholders in order. Named parameters match `:name` placeholders by name.
 
 ## Usage
 
-### Query Parameters (Most Common)
+### Named Parameters (Recommended)
+
+Named parameters provide better readability and don't depend on order:
+
+```nginx
+location = /book {
+    sqlite_db "book_catalog.db";
+    sqlite_query "SELECT * FROM books WHERE id = :book_id";
+    sqlite_param :book_id $arg_id;     # Named parameter
+    sqlite_template "detail.hbs";
+}
+```
+
+**Request:** `http://localhost/book?id=5`  
+**SQL Executed:** `SELECT * FROM books WHERE id = '5'`
+
+### Multiple Named Parameters
+
+```nginx
+location = /years {
+    sqlite_db "book_catalog.db";
+    sqlite_query "SELECT * FROM books WHERE year >= :min AND year <= :max";
+    sqlite_param :min $arg_min;        # Order doesn't matter
+    sqlite_param :max $arg_max;        # with named params
+    sqlite_template "list.hbs";
+}
+```
+
+**Request:** `http://localhost/years?min=2015&max=2024`  
+**SQL Executed:** `SELECT * FROM books WHERE year >= '2015' AND year <= '2024'`
+
+### Query Parameters (Positional)
 
 Use nginx's built-in `$arg_*` variables to access query parameters:
 
@@ -267,10 +303,46 @@ Run it with:
 - All SQL placeholders must be `?` (positional parameters)
 - Parameters match placeholders in order of `sqlite_param` directives
 
+## Named vs Positional Parameters
+
+### Named Parameters (`:name` syntax) - Recommended ✓
+
+**Advantages:**
+- Order-independent: Can rearrange `sqlite_param` directives without breaking queries
+- Self-documenting: Parameter names explain their purpose
+- Safer for maintenance: Adding/removing parameters less error-prone
+- Better for complex queries with many parameters
+
+**Example:**
+```nginx
+sqlite_query "SELECT * FROM books WHERE author = :author AND year > :year";
+sqlite_param :year $arg_year;      # Order doesn't matter!
+sqlite_param :author $arg_author;
+```
+
+### Positional Parameters (`?` syntax)
+
+**Advantages:**
+- Slightly more compact configuration
+- Works well for simple 1-2 parameter queries
+
+**Disadvantages:**
+- Order-dependent: Parameters must match `?` placeholders exactly
+- Less readable with many parameters
+- Error-prone when modifying queries
+
+**Example:**
+```nginx
+sqlite_query "SELECT * FROM books WHERE author = ? AND year > ?";
+sqlite_param $arg_author;  # Must be first!
+sqlite_param $arg_year;    # Must be second!
+```
+
+**Recommendation:** Use named parameters (`:name`) for all but the simplest queries.
+
 ## Limitations
 
-- Only supports `?` positional parameters (not named parameters like `:name`)
-- Parameters must be provided in the exact order they appear in the query
 - All parameter values are treated as strings (SQLite performs type coercion)
 - Complex SQL values (arrays, JSON) should be constructed in the query itself
+- Cannot mix positional and named parameters in the same query
 

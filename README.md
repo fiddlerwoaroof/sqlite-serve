@@ -48,17 +48,29 @@ A full-featured catalog with category browsing, global templates, and responsive
 
 **See:** `conf/book_catalog.conf` and `README_BOOK_CATALOG.md`
 
-### Example 2: Parameterized Queries (Port 8081)
+### Example 2: Positional Parameters (Port 8081)
 
-Demonstrates dynamic SQL queries with nginx variables.
+Demonstrates dynamic SQL queries with positional parameters.
 
 **Features:**
-- Book detail pages by ID
-- Genre filtering with query parameters
-- Year range searches with multiple parameters
-- Safe prepared statement parameter binding
+- Query parameters with `?` placeholders
+- Multiple positional parameters
+- Safe prepared statement binding
 
-**See:** `conf/book_detail.conf` and `README_PARAMETERS.md`
+**See:** `conf/book_detail.conf`
+
+### Example 3: Named Parameters (Port 8082) - Recommended
+
+Demonstrates named SQL parameters for better readability.
+
+**Features:**
+- Named parameters with `:name` syntax
+- Order-independent parameter binding
+- Title search with LIKE operator
+- Rating filtering
+- More maintainable configuration
+
+**See:** `conf/book_named_params.conf` and `README_PARAMETERS.md`
 
 ## Configuration Directives
 
@@ -85,9 +97,14 @@ Specify the Handlebars template file (relative to location path).
 ### `sqlite_param`
 Add a parameter to the SQL query (can be used multiple times).
 
-**Syntax:** `sqlite_param $variable_or_value;`  
+**Syntax:**  
+- Positional: `sqlite_param $variable_or_value;`  
+- Named: `sqlite_param :param_name $variable_or_value;`
+
 **Context:** `location`  
-**Notes:** Order matches `?` placeholders in query
+**Notes:**  
+- Positional parameters match `?` placeholders in order
+- Named parameters match `:name` placeholders by name (recommended)
 
 ### `sqlite_global_templates`
 Set a directory for global template files (partials, layouts).
@@ -112,12 +129,21 @@ http {
             sqlite_template "list.hbs";
         }
         
-        # Parameterized query
+        # Parameterized query with named parameter (recommended)
         location = /book {
             sqlite_db "catalog.db";
-            sqlite_query "SELECT * FROM books WHERE id = ?";
-            sqlite_param $arg_id;
+            sqlite_query "SELECT * FROM books WHERE id = :book_id";
+            sqlite_param :book_id $arg_id;
             sqlite_template "detail.hbs";
+        }
+        
+        # Positional parameters also supported
+        location = /search {
+            sqlite_db "catalog.db";
+            sqlite_query "SELECT * FROM books WHERE year >= ? AND year <= ?";
+            sqlite_param $arg_min;  # First ?
+            sqlite_param $arg_max;  # Second ?
+            sqlite_template "list.hbs";
         }
     }
 }

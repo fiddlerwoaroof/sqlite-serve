@@ -1,7 +1,7 @@
 use handlebars::Handlebars;
 use ngx::core::Buffer;
 use ngx::ffi::{
-    ngx_hash_key, ngx_http_get_variable, NGX_CONF_TAKE1, NGX_HTTP_LOC_CONF,
+    ngx_hash_key, ngx_http_get_variable, NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_HTTP_LOC_CONF,
     NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE, NGX_HTTP_LOC_CONF_OFFSET, NGX_RS_MODULE_SIGNATURE,
     nginx_version, ngx_chain_t, ngx_command_t, ngx_conf_t, ngx_http_module_t, ngx_int_t,
     ngx_module_t, ngx_str_t, ngx_uint_t,
@@ -46,7 +46,7 @@ struct ModuleConfig {
     db_path: String,
     query: String,
     template_path: String,
-    query_params: Vec<String>, // Variable names to use as query parameters
+    query_params: Vec<(String, String)>, // (param_name, variable_name) pairs
 }
 
 // Global configuration for shared templates
@@ -179,7 +179,7 @@ static mut ngx_http_howto_commands: [ngx_command_t; 6] = [
     },
     ngx_command_t {
         name: ngx_string!("sqlite_param"),
-        type_: (NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
+        type_: (NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1 | NGX_CONF_TAKE2) as ngx_uint_t,
         set: Some(ngx_http_howto_commands_add_param),
         conf: NGX_HTTP_LOC_CONF_OFFSET,
         offset: 0,
@@ -272,8 +272,20 @@ extern "C" fn ngx_http_howto_commands_add_param(
     unsafe {
         let conf = &mut *(conf as *mut ModuleConfig);
         let args = (*(*cf).args).elts as *mut ngx_str_t;
-        let param = (*args.add(1)).to_string();
-        conf.query_params.push(param);
+        let nelts = (*(*cf).args).nelts;
+        
+        if nelts == 2 {
+            // Single argument: positional parameter
+            // sqlite_param $arg_id
+            let variable = (*args.add(1)).to_string();
+            conf.query_params.push((String::new(), variable));
+        } else if nelts == 3 {
+            // Two arguments: named parameter
+            // sqlite_param :book_id $arg_id
+            let param_name = (*args.add(1)).to_string();
+            let variable = (*args.add(2)).to_string();
+            conf.query_params.push((param_name, variable));
+        }
     };
 
     std::ptr::null_mut()
@@ -318,7 +330,7 @@ fn load_templates_from_dir(reg: &mut Handlebars, dir_path: &str) -> std::io::Res
 fn execute_query(
     db_path: &str,
     query: &str,
-    params: &[&str],
+    params: &[(String, String)], // (param_name, value) pairs
 ) -> Result<Vec<std::collections::HashMap<String, serde_json::Value>>> {
     let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare(query)?;
@@ -328,13 +340,11 @@ fn execute_query(
         .map(|i| stmt.column_name(i).unwrap_or("").to_string())
         .collect();
 
-    // Convert params to rusqlite parameters
-    let rusqlite_params: Vec<&dyn rusqlite::ToSql> = params
-        .iter()
-        .map(|p| p as &dyn rusqlite::ToSql)
-        .collect();
-
-    let rows = stmt.query_map(rusqlite_params.as_slice(), |row| {
+    // Bind parameters (either positional or named)
+    let has_named_params = params.iter().any(|(name, _)| !name.is_empty());
+    
+    // Convert row to JSON map
+    let row_to_map = |row: &rusqlite::Row| -> rusqlite::Result<std::collections::HashMap<String, serde_json::Value>> {
         let mut map = std::collections::HashMap::new();
         for (i, col_name) in column_names.iter().enumerate() {
             let value: serde_json::Value = match row.get_ref(i)? {
@@ -350,7 +360,8 @@ fn execute_query(
                 }
                 rusqlite::types::ValueRef::Blob(v) => {
                     // Convert blob to hex string
-                    let hex_string = v.iter()
+                    let hex_string = v
+                        .iter()
                         .map(|b| format!("{:02x}", b))
                         .collect::<String>();
                     serde_json::Value::String(hex_string)
@@ -359,7 +370,23 @@ fn execute_query(
             map.insert(col_name.clone(), value);
         }
         Ok(map)
-    })?;
+    };
+    
+    let rows = if has_named_params {
+        // Use named parameters
+        let named_params: Vec<(&str, &dyn rusqlite::ToSql)> = params
+            .iter()
+            .map(|(name, value)| (name.as_str(), value as &dyn rusqlite::ToSql))
+            .collect();
+        stmt.query_map(named_params.as_slice(), row_to_map)?
+    } else {
+        // Use positional parameters
+        let positional_params: Vec<&dyn rusqlite::ToSql> = params
+            .iter()
+            .map(|(_, value)| value as &dyn rusqlite::ToSql)
+            .collect();
+        stmt.query_map(positional_params.as_slice(), row_to_map)?
+    };
 
     rows.collect()
 }
@@ -407,8 +434,8 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
         .unwrap_or("");
 
     // Resolve query parameters from nginx variables
-    let mut param_values: Vec<String> = Vec::new();
-    for var_name in &co.query_params {
+    let mut param_values: Vec<(String, String)> = Vec::new();
+    for (param_name, var_name) in &co.query_params {
         let value = if var_name.starts_with('$') {
             // It's a variable reference, resolve it from nginx
             let var_name_str = &var_name[1..]; // Remove the '$' prefix
@@ -445,19 +472,17 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
             // It's a literal value
             var_name.clone()
         };
-        param_values.push(value);
+        param_values.push((param_name.clone(), value));
     }
 
     ngx_log_debug_http!(
         request,
-        "executing query with {} parameters: {:?}",
-        param_values.len(),
-        param_values
+        "executing query with {} parameters",
+        param_values.len()
     );
 
     // Execute the configured SQL query with parameters
-    let param_refs: Vec<&str> = param_values.iter().map(|s| s.as_str()).collect();
-    let results = match execute_query(&co.db_path, &co.query, &param_refs) {
+    let results = match execute_query(&co.db_path, &co.query, &param_values) {
         Ok(results) => results,
         Err(e) => {
             ngx_log_debug_http!(request, "failed to execute query: {}", e);
