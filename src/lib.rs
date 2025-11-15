@@ -1,8 +1,10 @@
 //! sqlite-serve - NGINX module for serving dynamic content from SQLite databases
 
 mod config;
+mod domain;
 mod query;
 mod template;
+mod types;
 mod variable;
 
 use config::{MainConfig, ModuleConfig};
@@ -17,7 +19,7 @@ use ngx::ffi::{
 use ngx::core::Buffer;
 use ngx::ffi::ngx_chain_t;
 use ngx::http::{HttpModule, HttpModuleLocationConf, HttpModuleMainConf, NgxHttpCoreModule};
-use ngx::{core, core::Status, http, http_request_handler, ngx_log_debug_http, ngx_modules, ngx_string};
+use ngx::{core::Status, http, http_request_handler, ngx_log_debug_http, ngx_modules, ngx_string};
 use serde_json::json;
 use std::os::raw::{c_char, c_void};
 use std::ptr::addr_of;
@@ -30,7 +32,7 @@ impl ngx::http::HttpModule for Module {
     }
 
     unsafe extern "C" fn postconfiguration(_cf: *mut ngx_conf_t) -> ngx_int_t {
-        core::Status::NGX_OK.into()
+        Status::NGX_OK.into()
     }
 }
 
@@ -250,7 +252,7 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
 
     // Check if all required config values are set
     if co.db_path.is_empty() || co.query.is_empty() || co.template_path.is_empty() {
-        return core::Status::NGX_OK;
+        return Status::NGX_OK;
     }
 
     ngx_log_debug_http!(request, "sqlite module handler called");
@@ -378,7 +380,7 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
     request.discard_request_body();
     request.set_status(http::HTTPStatus::OK);
     let rc = request.send_header();
-    if rc == core::Status::NGX_ERROR || rc > core::Status::NGX_OK || request.header_only() {
+    if rc == Status::NGX_ERROR || rc > Status::NGX_OK || request.header_only() {
         return rc;
     }
 

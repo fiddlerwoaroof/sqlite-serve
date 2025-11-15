@@ -52,7 +52,6 @@ fn resolve_nginx_variable(request: &mut Request, var_name: &str) -> Result<Strin
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_resolve_literal_value() {
