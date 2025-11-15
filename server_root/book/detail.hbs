@@ -1,0 +1,140 @@
+{{> header}}
+
+<style>
+    .book-detail {
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 2rem;
+    }
+    .book-cover {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        height: 300px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 3rem;
+        margin-bottom: 2rem;
+    }
+    .book-title {
+        font-size: 2.5rem;
+        color: #2d3748;
+        margin-bottom: 0.5rem;
+    }
+    .book-author {
+        font-size: 1.5rem;
+        color: #667eea;
+        margin-bottom: 2rem;
+    }
+    .book-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    .meta-item {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 4px solid #667eea;
+    }
+    .meta-label {
+        font-size: 0.875rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        margin-bottom: 0.5rem;
+    }
+    .meta-value {
+        font-size: 1.25rem;
+        color: #2d3748;
+        font-weight: 600;
+    }
+    .book-description {
+        background: #f8f9fa;
+        padding: 2rem;
+        border-radius: 8px;
+        line-height: 1.8;
+        font-size: 1.125rem;
+        color: #4a5568;
+    }
+    .rating {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .stars {
+        color: #fbbf24;
+        font-size: 1.5rem;
+    }
+    .back-link {
+        display: inline-block;
+        margin-top: 2rem;
+        padding: 0.75rem 1.5rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        text-decoration: none;
+        border-radius: 8px;
+        font-weight: 500;
+        transition: transform 0.2s;
+    }
+    .back-link:hover {
+        transform: translateY(-2px);
+    }
+    .not-found {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: #6c757d;
+    }
+</style>
+
+{{#if results.[0]}}
+    {{#with results.[0]}}
+    <div class="book-detail">
+        <div class="book-cover">
+            📖
+        </div>
+        
+        <h1 class="book-title">{{title}}</h1>
+        <p class="book-author">by {{author}}</p>
+        
+        <div class="book-meta">
+            <div class="meta-item">
+                <div class="meta-label">Rating</div>
+                <div class="meta-value rating">
+                    <span class="stars">⭐</span>
+                    {{rating}} / 5.0
+                </div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">Published</div>
+                <div class="meta-value">{{year}}</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">Genre</div>
+                <div class="meta-value">{{genre}}</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">ISBN</div>
+                <div class="meta-value" style="font-family: monospace; font-size: 1rem;">{{isbn}}</div>
+            </div>
+        </div>
+        
+        <div class="book-description">
+            <strong>About this book:</strong><br><br>
+            {{description}}
+        </div>
+        
+        <a href="/books/all" class="back-link">← Back to Catalog</a>
+    </div>
+    {{/with}}
+{{else}}
+    <div class="not-found">
+        <h2>Book Not Found</h2>
+        <p>The requested book could not be found in our catalog.</p>
+        <a href="/books/all" class="back-link">← Back to Catalog</a>
+    </div>
+{{/if}}
+
+{{> footer}}
+

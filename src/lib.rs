@@ -1,10 +1,10 @@
 use handlebars::Handlebars;
 use ngx::core::Buffer;
 use ngx::ffi::{
-    NGX_CONF_TAKE1, NGX_HTTP_LOC_CONF, NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE,
-    NGX_HTTP_LOC_CONF_OFFSET, NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_chain_t,
-    ngx_command_t, ngx_conf_t, ngx_http_module_t, ngx_int_t, ngx_module_t, ngx_str_t,
-    ngx_uint_t,
+    ngx_hash_key, ngx_http_get_variable, NGX_CONF_TAKE1, NGX_HTTP_LOC_CONF,
+    NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE, NGX_HTTP_LOC_CONF_OFFSET, NGX_RS_MODULE_SIGNATURE,
+    nginx_version, ngx_chain_t, ngx_command_t, ngx_conf_t, ngx_http_module_t, ngx_int_t,
+    ngx_module_t, ngx_str_t, ngx_uint_t,
 };
 use ngx::http::{
     HttpModule, HttpModuleLocationConf, HttpModuleMainConf, MergeConfigError, NgxHttpCoreModule,
@@ -46,6 +46,7 @@ struct ModuleConfig {
     db_path: String,
     query: String,
     template_path: String,
+    query_params: Vec<String>, // Variable names to use as query parameters
 }
 
 // Global configuration for shared templates
@@ -76,6 +77,10 @@ impl http::Merge for ModuleConfig {
 
         if self.template_path.is_empty() {
             self.template_path = prev.template_path.clone();
+        }
+
+        if self.query_params.is_empty() {
+            self.query_params = prev.query_params.clone();
         }
 
         Ok(())
@@ -139,7 +144,7 @@ pub static mut ngx_http_howto_module: ngx_module_t = ngx_module_t {
 // sure to terminate the array with an empty command.
 #[unsafe(no_mangle)]
 #[allow(non_upper_case_globals)]
-static mut ngx_http_howto_commands: [ngx_command_t; 5] = [
+static mut ngx_http_howto_commands: [ngx_command_t; 6] = [
     ngx_command_t {
         name: ngx_string!("sqlite_global_templates"),
         type_: (NGX_HTTP_MAIN_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
@@ -168,6 +173,14 @@ static mut ngx_http_howto_commands: [ngx_command_t; 5] = [
         name: ngx_string!("sqlite_template"),
         type_: (NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
         set: Some(ngx_http_howto_commands_set_template_path),
+        conf: NGX_HTTP_LOC_CONF_OFFSET,
+        offset: 0,
+        post: std::ptr::null_mut(),
+    },
+    ngx_command_t {
+        name: ngx_string!("sqlite_param"),
+        type_: (NGX_HTTP_LOC_CONF | NGX_CONF_TAKE1) as ngx_uint_t,
+        set: Some(ngx_http_howto_commands_add_param),
         conf: NGX_HTTP_LOC_CONF_OFFSET,
         offset: 0,
         post: std::ptr::null_mut(),
@@ -250,6 +263,22 @@ extern "C" fn ngx_http_howto_commands_set_template_path(
     std::ptr::null_mut()
 }
 
+#[unsafe(no_mangle)]
+extern "C" fn ngx_http_howto_commands_add_param(
+    cf: *mut ngx_conf_t,
+    _cmd: *mut ngx_command_t,
+    conf: *mut c_void,
+) -> *mut c_char {
+    unsafe {
+        let conf = &mut *(conf as *mut ModuleConfig);
+        let args = (*(*cf).args).elts as *mut ngx_str_t;
+        let param = (*args.add(1)).to_string();
+        conf.query_params.push(param);
+    };
+
+    std::ptr::null_mut()
+}
+
 // Load all .hbs templates from a directory into the Handlebars registry
 fn load_templates_from_dir(reg: &mut Handlebars, dir_path: &str) -> std::io::Result<usize> {
     use std::fs;
@@ -285,8 +314,12 @@ fn load_templates_from_dir(reg: &mut Handlebars, dir_path: &str) -> std::io::Res
     Ok(count)
 }
 
-// Execute a generic SQL query and return results as JSON-compatible data
-fn execute_query(db_path: &str, query: &str) -> Result<Vec<std::collections::HashMap<String, serde_json::Value>>> {
+// Execute a generic SQL query with parameters and return results as JSON-compatible data
+fn execute_query(
+    db_path: &str,
+    query: &str,
+    params: &[&str],
+) -> Result<Vec<std::collections::HashMap<String, serde_json::Value>>> {
     let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare(query)?;
     
@@ -295,7 +328,13 @@ fn execute_query(db_path: &str, query: &str) -> Result<Vec<std::collections::Has
         .map(|i| stmt.column_name(i).unwrap_or("").to_string())
         .collect();
 
-    let rows = stmt.query_map([], |row| {
+    // Convert params to rusqlite parameters
+    let rusqlite_params: Vec<&dyn rusqlite::ToSql> = params
+        .iter()
+        .map(|p| p as &dyn rusqlite::ToSql)
+        .collect();
+
+    let rows = stmt.query_map(rusqlite_params.as_slice(), |row| {
         let mut map = std::collections::HashMap::new();
         for (i, col_name) in column_names.iter().enumerate() {
             let value: serde_json::Value = match row.get_ref(i)? {
@@ -367,8 +406,60 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
         .and_then(|p| p.to_str())
         .unwrap_or("");
 
-    // Execute the configured SQL query
-    let results = match execute_query(&co.db_path, &co.query) {
+    // Resolve query parameters from nginx variables
+    let _ = std::fs::write("/tmp/nginx_debug.txt", format!("Query: {}\nParams: {:?}\n", co.query, co.query_params));
+    
+    let mut param_values: Vec<String> = Vec::new();
+    for var_name in &co.query_params {
+        let value = if var_name.starts_with('$') {
+            // It's a variable reference, resolve it from nginx
+            let var_name_str = &var_name[1..]; // Remove the '$' prefix
+            let var_name_bytes = var_name_str.as_bytes();
+            
+            let mut name = ngx_str_t {
+                len: var_name_bytes.len(),
+                data: var_name_bytes.as_ptr() as *mut u8,
+            };
+            
+            let key = unsafe { ngx_hash_key(name.data, name.len) };
+            let r: *mut ngx::ffi::ngx_http_request_t = request.into();
+            let var_value = unsafe { ngx_http_get_variable(r, &mut name, key) };
+            
+            if var_value.is_null() {
+                ngx_log_debug_http!(request, "variable not found: {}", var_name);
+                return http::HTTPStatus::BAD_REQUEST.into();
+            }
+            
+            let var_ref = unsafe { &*var_value };
+            if var_ref.valid() == 0 {
+                ngx_log_debug_http!(request, "variable value not valid: {}", var_name);
+                return http::HTTPStatus::BAD_REQUEST.into();
+            }
+            
+            match std::str::from_utf8(var_ref.as_bytes()) {
+                Ok(s) => s.to_string(),
+                Err(_) => {
+                    ngx_log_debug_http!(request, "failed to decode variable as UTF-8: {}", var_name);
+                    return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
+                }
+            }
+        } else {
+            // It's a literal value
+            var_name.clone()
+        };
+        param_values.push(value);
+    }
+
+    ngx_log_debug_http!(
+        request,
+        "executing query with {} parameters: {:?}",
+        param_values.len(),
+        param_values
+    );
+
+    // Execute the configured SQL query with parameters
+    let param_refs: Vec<&str> = param_values.iter().map(|s| s.as_str()).collect();
+    let results = match execute_query(&co.db_path, &co.query, &param_refs) {
         Ok(results) => results,
         Err(e) => {
             ngx_log_debug_http!(request, "failed to execute query: {}", e);
