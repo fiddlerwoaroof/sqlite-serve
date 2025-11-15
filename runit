@@ -1,0 +1,5 @@
+/home/edwlan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/.cache/nginx/1.23.3/linux-x86_64/sbin/nginx \
+    -e /dev/stdout \
+    -p "$PWD" \
+    -c conf/howto.conf \
+    -g 'daemon off;'

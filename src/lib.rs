@@ -1,15 +1,22 @@
-use std::fmt::{Display, Formatter};
-use std::fmt;
+use handlebars::Handlebars;
 use ngx::core::Buffer;
 use ngx::ffi::{
-    NGX_CONF_TAKE1, NGX_HTTP_LOC_CONF, NGX_HTTP_MODULE, NGX_RS_HTTP_LOC_CONF_OFFSET, NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_array_push, ngx_buf_t, ngx_chain_t, ngx_command_t, ngx_conf_t, ngx_http_core_module, ngx_http_discard_request_body, ngx_http_handler_pt, ngx_http_module_t, ngx_http_phases_NGX_HTTP_ACCESS_PHASE, ngx_http_request_t, ngx_int_t, ngx_module_t, ngx_str_t, ngx_uint_t
+    NGX_CONF_TAKE1, NGX_HTTP_LOC_CONF, NGX_HTTP_MODULE, NGX_RS_HTTP_LOC_CONF_OFFSET,
+    NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_array_push, ngx_buf_t, ngx_chain_t, ngx_command_t,
+    ngx_conf_t, ngx_http_core_module, ngx_http_discard_request_body, ngx_http_handler_pt,
+    ngx_http_module_t, ngx_http_phases_NGX_HTTP_ACCESS_PHASE, ngx_http_request_t, ngx_int_t,
+    ngx_module_t, ngx_str_t, ngx_uint_t,
 };
-use ngx::http::{HTTPModule, MergeConfigError};
+use ngx::http::{HTTPModule, HTTPStatus, MergeConfigError};
 use ngx::{core, core::Status, http};
 use ngx::{http_request_handler, ngx_log_debug_http, ngx_modules, ngx_null_command, ngx_string};
+use rusqlite::{Connection, Result};
+use serde;
+use serde_json::json;
+use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::os::raw::{c_char, c_void};
 use std::ptr::addr_of;
-use rusqlite::{Connection, Result};
 
 struct Module;
 
@@ -147,11 +154,11 @@ extern "C" fn ngx_http_howto_commands_set_method(
     std::ptr::null_mut()
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 struct Person {
     id: u64,
     name: String,
-    address: String
+    address: String,
 }
 
 impl Display for Person {
@@ -184,46 +191,30 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
     let m_persons = get_person();
 
     let enabled = {
-        let co = unsafe { request.get_module_loc_conf::<ModuleConfig>(&*addr_of!(ngx_http_howto_module)) };
+        let co = unsafe {
+            request.get_module_loc_conf::<ModuleConfig>(&*addr_of!(ngx_http_howto_module))
+        };
         let co = co.expect("module config is none");
         co.enabled
     };
 
     ngx_log_debug_http!(request, "howto module enabled called");
+    let mut reg = Handlebars::new();
+    match reg.register_template_file("person", "./person.hbs") {
+        Ok(_) => (),
+        Err(_) => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),
+    }
 
     match enabled {
         true => {
             match m_persons {
                 Ok(persons) => {
-                    request.discard_request_body();
-                    request.set_status(http::HTTPStatus::OK);
-                    // request.set_content_length_n(full_len);
-                    let rc = request.send_header();
-                    if rc == core::Status::NGX_ERROR || rc > core::Status::NGX_OK || request.header_only() {
-                        return rc;
-                    }
+                    let body = match reg.render("person", &json!({"persons": persons})) {
+                        Ok(body) => body,
+                        Err(_) => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),
+                    };
 
-                    for person in persons {
-                        ngx_log_debug_http!(request, "person: {}\n", person);
-
-                        let s = fmt::format(format_args!("{}\n", person));
-                        let mut buf = match request.pool().create_buffer_from_str(&s) {
-                            Some(buf) => buf,
-                            None => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),
-                        };
-
-                        buf.set_last_buf(false);
-                        buf.set_last_in_chain(false);
-
-                        let mut out = ngx_chain_t {
-                            buf: buf.as_ngx_buf_mut(),
-                            next: std::ptr::null_mut()
-                        };
-
-                        request.output_filter(&mut out);
-                    }
-
-                    let mut buf = match request.pool().create_buffer_from_static_str("\n") {
+                    let mut buf = match request.pool().create_buffer_from_str(&body) {
                         Some(buf) => buf,
                         None => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),
                     };
@@ -233,19 +224,29 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
 
                     let mut out = ngx_chain_t {
                         buf: buf.as_ngx_buf_mut(),
-                        next: std::ptr::null_mut()
+                        next: std::ptr::null_mut(),
                     };
 
+                    request.discard_request_body();
+                    request.set_status(http::HTTPStatus::OK);
+                    // request.set_content_length_n(full_len);
+                    let rc = request.send_header();
+                    if rc == core::Status::NGX_ERROR
+                        || rc > core::Status::NGX_OK
+                        || request.header_only()
+                    {
+                        return rc;
+                    }
+
                     request.output_filter(&mut out);
-                },
+                }
                 Err(e) => {
                     //todo!();
                     ngx_log_debug_http!(request, "failed to find persons: {}", e);
 
-                    return http::HTTPStatus::INTERNAL_SERVER_ERROR.into()
+                    return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
                 }
             }
-
 
             // let method = request.method();
 
