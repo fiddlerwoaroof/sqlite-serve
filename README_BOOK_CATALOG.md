@@ -1,6 +1,6 @@
 # Book Catalog Example
 
-A complete example demonstrating the nginx-test SQLite module with a read-only book catalog.
+A complete example demonstrating the sqlite-serve module with a read-only book catalog.
 
 ## Features
 
@@ -54,7 +54,7 @@ Open your browser to:
 ## Directory Structure
 
 ```
-nginx-test/
+sqlite-serve/
 ├── book_catalog.db                      # SQLite database
 ├── setup_book_catalog.sh                # Database setup script
 ├── conf/

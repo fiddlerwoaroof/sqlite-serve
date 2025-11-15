@@ -1,6 +1,6 @@
 # Path Parameters Feature
 
-The nginx-test SQLite module supports parameterized SQL queries using nginx variables. This allows you to pass dynamic values from the request (query parameters, path captures, headers, etc.) as safe SQL prepared statement parameters.
+The sqlite-serve module supports parameterized SQL queries using nginx variables. This allows you to pass dynamic values from the request (query parameters, path captures, headers, etc.) as safe SQL prepared statement parameters.
 
 ## New Directive
 

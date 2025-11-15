@@ -1,4 +1,4 @@
-# nginx-test - SQLite Module for NGINX
+# sqlite-serve - SQLite Module for NGINX
 
 A dynamic NGINX module written in Rust that integrates SQLite databases with Handlebars templating, enabling data-driven web applications directly from NGINX configuration.
 
@@ -251,7 +251,7 @@ Request → NGINX → Module Handler → SQLite Query
 ## Project Structure
 
 ```
-nginx-test/
+sqlite-serve/
 ├── src/
 │   └── lib.rs                     # Module implementation
 ├── conf/

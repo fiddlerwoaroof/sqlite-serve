@@ -407,8 +407,6 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
         .unwrap_or("");
 
     // Resolve query parameters from nginx variables
-    let _ = std::fs::write("/tmp/nginx_debug.txt", format!("Query: {}\nParams: {:?}\n", co.query, co.query_params));
-    
     let mut param_values: Vec<String> = Vec::new();
     for var_name in &co.query_params {
         let value = if var_name.starts_with('$') {

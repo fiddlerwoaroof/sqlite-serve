@@ -14,7 +14,7 @@ if [ ! -f "book_catalog.db" ]; then
 fi
 
 # Check if module is built
-if [ ! -f "target/debug/libnginx_test.dylib" ]; then
+if [ ! -f "target/debug/libsqlite_serve.dylib" ]; then
     echo "Module not built. Building..."
     direnv exec "$PWD" cargo build
     echo ""
