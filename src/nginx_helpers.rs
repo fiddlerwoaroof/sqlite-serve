@@ -1,9 +1,10 @@
 //! NGINX-specific helper functions
 
+use crate::logging;
 use ngx::core::Buffer;
 use ngx::ffi::ngx_chain_t;
 use ngx::http::{HttpModuleLocationConf, NgxHttpCoreModule, Request};
-use ngx::{core::Status, http, ngx_log_debug_http};
+use ngx::{core::Status, http};
 
 /// Get document root and URI from request
 pub fn get_doc_root_and_uri(request: &mut Request) -> Result<(String, String), String> {
@@ -54,9 +55,10 @@ pub fn send_response(request: &mut Request, body: &str) -> Status {
     Status::NGX_DONE
 }
 
-/// Log and return error status
+/// Log and return error status (deprecated - use logging module directly)
+#[allow(dead_code)]
 pub fn log_error(request: &mut Request, context: &str, error: &str, status: http::HTTPStatus) -> Status {
-    ngx_log_debug_http!(request, "{}: {}", context, error);
+    logging::log(request, logging::LogLevel::Error, context, error);
     status.into()
 }
 

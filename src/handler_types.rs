@@ -3,12 +3,12 @@
 use crate::adapters::{HandlebarsAdapter, NginxVariableResolver, SqliteQueryExecutor};
 use crate::config::{MainConfig, ModuleConfig};
 use crate::domain::{RequestProcessor, ValidatedConfig};
+use crate::logging;
 use crate::nginx_helpers::{get_doc_root_and_uri, send_response};
 use crate::parsing;
 use crate::{domain, Module};
 use ngx::core::Status;
 use ngx::http::{HttpModuleLocationConf, HttpModuleMainConf};
-use ngx::ngx_log_debug_http;
 
 /// Proof that we have valid configuration (Ghost of Departed Proofs)
 pub struct ValidConfigToken<'a> {
@@ -35,42 +35,65 @@ pub fn process_request(
     request: &mut ngx::http::Request,
     config: ValidConfigToken,
 ) -> Status {
+    logging::log(
+        request,
+        logging::LogLevel::Debug,
+        "handler",
+        &format!("Processing request for {}", request.unparsed_uri().to_str().unwrap_or("unknown")),
+    );
+
     // Parse config into validated types
-    // If this fails, it's a programming error (config should be valid per token)
     let validated_config = match parsing::parse_config(config.get()) {
         Ok(c) => c,
         Err(e) => {
-            ngx_log_debug_http!(request, "unexpected parse error: {}", e);
+            logging::log_config_error(request, "configuration", "", &e);
             return ngx::http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
         }
     };
 
-    // Get nginx paths - can fail due to nginx state, not our logic
+    // Get nginx paths
     let (doc_root, uri) = match get_doc_root_and_uri(request) {
         Ok(paths) => paths,
         Err(e) => {
-            ngx_log_debug_http!(request, "nginx path error: {}", e);
+            logging::log(request, logging::LogLevel::Error, "nginx", &format!("Path resolution failed: {}", e));
             return ngx::http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
         }
     };
 
-    // Pure function - cannot fail
+    // Resolve template path (pure function - cannot fail)
     let resolved_template = domain::resolve_template_path(&doc_root, &uri, &validated_config.template_path);
 
-    // Resolve parameters - can fail if nginx variable doesn't exist
+    logging::log(
+        request,
+        logging::LogLevel::Debug,
+        "template",
+        &format!("Resolved template: {}", resolved_template.full_path()),
+    );
+
+    // Resolve parameters
     let var_resolver = NginxVariableResolver::new(request);
     let resolved_params = match domain::resolve_parameters(&validated_config.parameters, &var_resolver) {
-        Ok(params) => params,
+        Ok(params) => {
+            if !params.is_empty() {
+                logging::log(
+                    request,
+                    logging::LogLevel::Debug,
+                    "params",
+                    &format!("Resolved {} parameters", params.len()),
+                );
+            }
+            params
+        }
         Err(e) => {
-            ngx_log_debug_http!(request, "parameter error: {}", e);
+            logging::log_param_error(request, "variable", &e);
             return ngx::http::HTTPStatus::BAD_REQUEST.into();
         }
     };
 
-    // Create processor and run - uses dependency injection
+    // Execute and render
     let html = execute_with_processor(&validated_config, &resolved_template, &resolved_params, request);
     
-    // Send response - proven correct by types
+    // Send response
     send_response(request, &html)
 }
 
@@ -93,20 +116,67 @@ fn execute_with_processor(
 
     let main_conf = Module::main_conf(request).expect("main config is none");
     let global_dir = if !main_conf.global_templates_dir.is_empty() {
+        logging::log_template_loading(
+            request,
+            "global",
+            0,
+            &main_conf.global_templates_dir,
+        );
         Some(main_conf.global_templates_dir.as_str())
     } else {
         None
     };
 
-    // If processor fails, return error HTML instead of panicking
-    processor
-        .process(config, resolved_template, resolved_params, global_dir)
-        .unwrap_or_else(|e| {
+    // Process through functional core
+    match processor.process(config, resolved_template, resolved_params, global_dir) {
+        Ok(html) => {
+            // Count results for logging (parse HTML or trust it worked)
+            logging::log(
+                request,
+                logging::LogLevel::Info,
+                "success",
+                &format!(
+                    "Rendered {} with {} params",
+                    resolved_template.full_path().split('/').last().unwrap_or("template"),
+                    resolved_params.len()
+                ),
+            );
+            html
+        }
+        Err(e) => {
+            // Log detailed error information
+            if e.contains("query") {
+                logging::log_query_error(request, config.query.as_str(), &e);
+            } else if e.contains("template") {
+                logging::log_template_error(request, resolved_template.full_path(), &e);
+            } else {
+                logging::log(
+                    request,
+                    logging::LogLevel::Error,
+                    "processing",
+                    &format!("Request processing failed: {}", e),
+                );
+            }
+
+            // Return user-friendly error page
             format!(
-                "<html><body><h1>Error</h1><pre>{}</pre></body></html>",
+                r#"<!DOCTYPE html>
+<html>
+<head><title>Error - sqlite-serve</title></head>
+<body style="font-family: monospace; max-width: 800px; margin: 2rem auto; padding: 0 1rem;">
+    <h1 style="color: #CC9393;">Request Processing Error</h1>
+    <p style="color: #A6A689;">An error occurred while processing your request.</p>
+    <details style="margin-top: 1rem; background: #1111; padding: 1rem; border-left: 3px solid #CC9393;">
+        <summary style="cursor: pointer; color: #DFAF8F; font-weight: bold;">Error Details</summary>
+        <pre style="margin-top: 1rem; color: #DCDCCC; overflow-x: auto;">{}</pre>
+    </details>
+    <p style="margin-top: 2rem;"><a href="/" style="color: #7CB8BB;">← Back to Home</a></p>
+</body>
+</html>"#,
                 e
             )
-        })
+        }
+    }
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@ mod adapters;
 mod config;
 mod domain;
 mod handler_types;
+mod logging;
 mod nginx_helpers;
 mod parsing;
 mod query;
