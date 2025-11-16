@@ -106,23 +106,20 @@ pub trait TemplateRenderer {
 }
 
 /// Pure business logic for request handling
-pub struct RequestProcessor<Q, L, R> {
+pub struct RequestProcessor<Q, L> {
     query_executor: Q,
     template_loader: L,
-    renderer: R,
 }
 
-impl<Q, L, R> RequestProcessor<Q, L, R>
+impl<Q, L> RequestProcessor<Q, L>
 where
     Q: QueryExecutor,
-    L: TemplateLoader,
-    R: TemplateRenderer,
+    L: TemplateLoader + TemplateRenderer,
 {
-    pub fn new(query_executor: Q, template_loader: L, renderer: R) -> Self {
+    pub fn new(query_executor: Q, template_loader: L) -> Self {
         RequestProcessor {
             query_executor,
-            template_loader,
-            renderer,
+            template_loader
         }
     }
 
@@ -157,7 +154,7 @@ where
 
         // Render
         let data = serde_json::json!({"results": results});
-        self.renderer
+        self.template_loader
             .render("template", &data)
             .map_err(|e| format!("rendering failed: {}", e))
     }
@@ -212,8 +209,8 @@ mod tests {
         }
     }
 
-    struct MockTemplateLoader;
-    impl TemplateLoader for MockTemplateLoader {
+    struct MockTemplateSystem;
+    impl TemplateLoader for MockTemplateSystem {
         fn load_from_dir(&self, _dir_path: &str) -> Result<usize, String> {
             Ok(0)
         }
@@ -222,8 +219,7 @@ mod tests {
         }
     }
 
-    struct MockTemplateRenderer;
-    impl TemplateRenderer for MockTemplateRenderer {
+    impl TemplateRenderer for MockTemplateSystem {
         fn render(&self, _template_name: &str, data: &Value) -> Result<String, String> {
             Ok(format!("Rendered: {:?}", data))
         }
@@ -286,7 +282,7 @@ mod tests {
         };
 
         let processor =
-            RequestProcessor::new(MockQueryExecutor, MockTemplateLoader, MockTemplateRenderer);
+            RequestProcessor::new(MockQueryExecutor, MockTemplateSystem);
 
         let result = processor.process(&config, &resolved_template, &[], None);
 

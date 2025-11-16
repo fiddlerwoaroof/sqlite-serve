@@ -46,7 +46,7 @@ impl QueryExecutor for SqliteQueryExecutor {
 }
 
 /// Adapter for Handlebars template operations (using raw pointer for interior mutability)
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct HandlebarsAdapter {
     registry: *mut Handlebars<'static>,
 }
