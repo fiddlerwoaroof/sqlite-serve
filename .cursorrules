@@ -1,2 +1,52 @@
+# Environment
 - Always use `direnv exec "$PWD"` when invoking cargo and other tools that need access to the nix/direnv environment
 - Avoid using `head` and `tail` to avoid missing output
+
+# Design Principles
+
+## Parse, Don't Validate
+- Create newtype wrappers for domain concepts (DatabasePath, SqlQuery, etc.)
+- Validate at parse time, not at use time
+- Use Result types for parsing - if you have the type, it's valid
+- Make illegal states unrepresentable
+
+## Correctness by Construction
+- Use the type system to enforce invariants
+- Prefer types that can only represent valid states
+- Example: SqlQuery can only be constructed from SELECT statements
+
+## Functional Core, Imperative Shell
+- Keep business logic pure and testable (domain.rs)
+- Move I/O to adapter layer (adapters.rs)
+- Use dependency injection via traits
+- Handler should be minimal orchestration only
+
+## Ghost of Departed Proofs
+- Use proof tokens to carry compile-time guarantees
+- Example: ValidConfigToken proves config is non-empty
+- Functions accept tokens, not raw data
+- Type system enforces the proofs
+
+## Module Organization
+- Single responsibility per module
+- Small, focused files (< 300 lines preferred)
+- Tests co-located with code (#[cfg(test)])
+- Clear separation: types → domain → adapters → glue
+
+## Error Handling
+- Use Result types, not exceptions
+- Structured logging with context
+- User-friendly error messages
+- Fail fast on invalid configuration
+
+## Code Quality
+- No dead code - delete unused functions immediately
+- Comprehensive tests for all modules
+- Prefer pure functions over stateful code
+- Keep handlers minimal - logic belongs in tested modules
+
+## Testing
+- Test pure functions with simple inputs
+- Use mock implementations for DI traits
+- Aim for >90% coverage
+- Tests should be fast and isolated
