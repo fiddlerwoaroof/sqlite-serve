@@ -1,0 +1,37 @@
+{{> zenburn_header}}
+
+<div class="page-header">
+    <h2>Book Catalog</h2>
+    <p>Browse our curated collection of technical literature</p>
+</div>
+
+{{#if results}}
+<div class="stats-grid">
+    <div class="stat-card">
+        <span class="stat-value">{{#each results}}{{#if @last}}{{@index}}{{/if}}{{/each}}</span>
+        <span class="stat-label">Books Found</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-value">📚</span>
+        <span class="stat-label">Categories</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-value">⭐</span>
+        <span class="stat-label">Curated</span>
+    </div>
+</div>
+
+<div class="book-grid">
+    {{#each results}}
+        {{> zenburn_card}}
+    {{/each}}
+</div>
+{{else}}
+<div class="empty-state">
+    <h3>No Books Found</h3>
+    <p>Try adjusting your search or <a href="/books">browse all books</a></p>
+</div>
+{{/if}}
+
+{{> zenburn_footer}}
+

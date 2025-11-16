@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sqlite-serve | Book Catalog</title>
+    <link rel="stylesheet" href="/static/zenburn.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>📚 sqlite-serve</h1>
+            <p>Dynamic content from SQLite via NGINX</p>
+        </div>
+    </header>
+    <nav>
+        <div class="nav-content">
+            <a href="/books">All Books</a>
+            <a href="/genre?genre=Programming">Programming</a>
+            <a href="/genre?genre=Databases">Databases</a>
+            <a href="/genre?genre=Computer%20Science">Computer Science</a>
+            <a href="/top?min=4.7">Top Rated</a>
+            <a href="/era?from=2015&to=2024">Recent (2015-2024)</a>
+            <form class="search-form" action="/search" method="get">
+                <input type="text" name="q" placeholder="Search titles..." />
+                <button type="submit">Search</button>
+            </form>
+        </div>
+    </nav>
+    <main>
+

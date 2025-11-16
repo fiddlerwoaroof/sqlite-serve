@@ -1,0 +1,15 @@
+<article class="book-card">
+    <div class="book-header">
+        <h3 class="book-title">{{title}}</h3>
+        <div class="book-rating">⭐ {{rating}}</div>
+    </div>
+    <p class="book-author">{{author}}</p>
+    <p class="book-description">{{description}}</p>
+    <div class="book-meta">
+        <span class="genre-badge">{{genre}}</span>
+        <span class="year-badge">{{year}}</span>
+        {{#if isbn}}<span class="isbn">{{isbn}}</span>{{/if}}
+    </div>
+    <a href="/book?id={{id}}" class="detail-link">View Details →</a>
+</article>
+

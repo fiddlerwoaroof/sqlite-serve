@@ -1,0 +1,509 @@
+/* Zenburn theme for sqlite-serve */
+/* Generated palette via: zenburn -j -e oklab */
+
+:root {
+    --fg-plus-2: #FFFFEF;
+    --fg-plus-1: #F5F5D6;
+    --fg: #DCDCCC;
+    --fg-1: #A6A689;
+    --fg-2: #656555;
+    --black: #000000;
+    --bg-2: #000000;
+    --bg-1: #111112;
+    --bg-05: #383838;
+    --bg: #2A2B2E;
+    --bg-plus-05: #494949;
+    --bg-plus-1: #4F4F4F;
+    --bg-plus-2: #5F5F5F;
+    --bg-plus-3: #6F6F6F;
+    --red-plus-2: #ECB3B3;
+    --red-plus-1: #DCA3A3;
+    --red: #CC9393;
+    --red-1: #BC8383;
+    --red-2: #AC7373;
+    --red-3: #9C6363;
+    --red-4: #8C5353;
+    --red-5: #7C4343;
+    --red-6: #6C3333;
+    --orange: #DFAF8F;
+    --yellow: #F0DFAF;
+    --yellow-1: #E0CF9F;
+    --yellow-2: #D0BF8F;
+    --green-5: #2F4F2F;
+    --green-4: #3F5F3F;
+    --green-3: #4F6F4F;
+    --green-2: #5F7F5F;
+    --green-1: #6F8F6F;
+    --green: #7F9F7F;
+    --green-plus-1: #8FB28F;
+    --green-plus-2: #9FC59F;
+    --green-plus-3: #AFD8AF;
+    --green-plus-4: #BFEBBF;
+    --cyan: #93E0E3;
+    --blue-plus-3: #BDE0F3;
+    --blue-plus-2: #ACE0E3;
+    --blue-plus-1: #94BFF3;
+    --blue: #8CD0D3;
+    --blue-1: #7CB8BB;
+    --blue-2: #6CA0A3;
+    --blue-3: #5C888B;
+    --blue-4: #4C7073;
+    --blue-5: #366060;
+    --magenta: #DC8CC3;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+    line-height: 1.6;
+    color: var(--fg);
+    background: var(--bg);
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* Header */
+header {
+    background: var(--bg-1);
+    border-bottom: 2px solid var(--blue-1);
+    padding: 1.5rem 2rem;
+    box-shadow: 0 2px 8px oklab(0.000% 0.000 0.000 / 0.5);
+}
+
+.header-content {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+header h1 {
+    color: var(--yellow);
+    font-size: 1.8rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+header p {
+    color: var(--fg-1);
+    font-size: 0.95rem;
+}
+
+/* Navigation */
+nav {
+    background: var(--bg-plus-1);
+    padding: 0.75rem 2rem;
+    border-bottom: 1px solid var(--bg-1);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 4px oklab(0.000% 0.000 0.000 / 0.3);
+}
+
+.nav-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+nav a {
+    color: var(--blue-1);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+    font-size: 0.95rem;
+}
+
+nav a:hover {
+    color: var(--green-plus-1);
+}
+
+nav a.active {
+    color: var(--yellow);
+}
+
+.search-form {
+    margin-left: auto;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.search-form input {
+    background: var(--bg);
+    border: 1px solid var(--fg-2);
+    color: var(--fg);
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+.search-form input:focus {
+    outline: none;
+    border-color: var(--blue-1);
+}
+
+.search-form button {
+    background: var(--blue-1);
+    color: var(--bg-1);
+    border: none;
+    padding: 0.4rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: background 0.2s;
+}
+
+.search-form button:hover {
+    background: var(--green-plus-1);
+}
+
+/* Main content */
+main {
+    padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* Footer */
+footer {
+    background: var(--bg-1);
+    padding: 2rem;
+    text-align: center;
+    border-top: 2px solid var(--blue-1);
+    margin-top: 3rem;
+}
+
+footer p {
+    margin-top: 0.5rem;
+}
+
+footer p:first-child {
+    color: var(--yellow);
+    font-weight: 600;
+    margin-top: 0;
+}
+
+footer p:not(:first-child) {
+    color: var(--fg-1);
+    font-size: 0.9rem;
+}
+
+/* Page header */
+.page-header {
+    background: var(--bg-plus-1);
+    border: 1px solid var(--bg-1);
+    border-left: 3px solid var(--green-plus-1);
+    border-radius: 6px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.page-header h2 {
+    color: var(--yellow);
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.page-header p {
+    color: var(--fg-1);
+    font-size: 1.05rem;
+}
+
+/* Stats grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: var(--bg-plus-1);
+    border: 1px solid var(--bg-1);
+    border-radius: 6px;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.stat-value {
+    color: var(--orange);
+    font-size: 2.5rem;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    color: var(--fg-1);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Book grid and cards */
+.book-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 1.5rem;
+}
+
+.book-card {
+    background: var(--bg-plus-1);
+    border: 1px solid var(--bg-1);
+    border-left: 3px solid var(--blue-1);
+    border-radius: 6px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.book-card:hover {
+    border-left-color: var(--green-plus-1);
+    box-shadow: 0 4px 12px oklab(0.000% 0.000 0.000 / 0.5);
+    transform: translateY(-2px);
+}
+
+.book-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 1rem;
+}
+
+.book-title {
+    color: var(--yellow);
+    font-size: 1.15rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.book-rating {
+    background: var(--bg-1);
+    color: var(--orange);
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.book-author {
+    color: var(--blue-1);
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.book-description {
+    color: var(--fg-1);
+    line-height: 1.5;
+    font-size: 0.9rem;
+}
+
+.book-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.genre-badge {
+    background: var(--green);
+    color: var(--bg-1);
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.year-badge {
+    background: var(--bg-1);
+    color: var(--fg-1);
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+}
+
+.isbn {
+    color: var(--fg-1);
+    font-family: monospace;
+    font-size: 0.8rem;
+}
+
+.detail-link {
+    color: var(--blue-1);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+    align-self: flex-start;
+    transition: color 0.2s;
+}
+
+.detail-link:hover {
+    color: var(--green-plus-1);
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--fg-1);
+}
+
+.empty-state h3 {
+    color: var(--orange);
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.empty-state a {
+    color: var(--blue-1);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.empty-state a:hover {
+    color: var(--green-plus-1);
+}
+
+/* Book detail page */
+.detail-container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.breadcrumb {
+    color: var(--fg-1);
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.breadcrumb a {
+    color: var(--blue-1);
+    text-decoration: none;
+}
+
+.breadcrumb a:hover {
+    color: var(--green-plus-1);
+}
+
+.book-hero {
+    background: var(--bg-plus-1);
+    border: 1px solid var(--bg-1);
+    border-left: 4px solid var(--orange);
+    border-radius: 6px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.book-hero-title {
+    color: var(--yellow);
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    line-height: 1.2;
+}
+
+.book-hero-author {
+    color: var(--blue-1);
+    font-size: 1.3rem;
+    font-weight: 500;
+    margin-bottom: 1.5rem;
+}
+
+.meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.meta-item {
+    background: var(--bg-1);
+    padding: 1.25rem;
+    border-radius: 6px;
+    border-left: 3px solid var(--blue-1);
+}
+
+.meta-label {
+    color: var(--fg-1);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.meta-value {
+    color: var(--yellow);
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+.meta-value.rating {
+    color: var(--orange);
+}
+
+.description-section {
+    background: var(--bg-plus-1);
+    border: 1px solid var(--bg-1);
+    border-radius: 6px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.description-section h3 {
+    color: var(--green-plus-1);
+    font-size: 1.3rem;
+    margin-bottom: 1rem;
+}
+
+.description-text {
+    color: var(--fg);
+    line-height: 1.8;
+    font-size: 1.05rem;
+}
+
+.back-button {
+    display: inline-block;
+    background: var(--blue-1);
+    color: var(--bg-1);
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.back-button:hover {
+    background: var(--green-plus-1);
+    transform: translateX(-4px);
+}
+
+.not-found {
+    text-align: center;
+    padding: 4rem 2rem;
+}
+
+.not-found h2 {
+    color: var(--red);
+    font-size: 2rem;
+    margin-bottom: 1rem;
+}
+
+.not-found p {
+    color: var(--fg-1);
+    margin-bottom: 2rem;
+}
