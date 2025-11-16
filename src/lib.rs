@@ -3,6 +3,7 @@
 mod adapters;
 mod config;
 mod domain;
+mod handler_types;
 mod nginx_helpers;
 mod parsing;
 mod query;
@@ -10,17 +11,15 @@ mod template;
 mod types;
 mod variable;
 
-use adapters::{HandlebarsAdapter, NginxVariableResolver, SqliteQueryExecutor};
 use config::{MainConfig, ModuleConfig};
-use domain::RequestProcessor;
-use nginx_helpers::{get_doc_root_and_uri, log_error, send_response};
+use handler_types::{process_request, ValidConfigToken};
 use ngx::ffi::{
     NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_HTTP_LOC_CONF, NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE,
     NGX_HTTP_LOC_CONF_OFFSET, NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_command_t, ngx_conf_t,
     ngx_http_module_t, ngx_int_t, ngx_module_t, ngx_str_t, ngx_uint_t,
 };
 use ngx::http::{HttpModule, HttpModuleLocationConf, HttpModuleMainConf, NgxHttpCoreModule};
-use ngx::{core::Status, http, http_request_handler, ngx_log_debug_http, ngx_modules, ngx_string};
+use ngx::{core::Status, http, http_request_handler, ngx_modules, ngx_string};
 use std::os::raw::{c_char, c_void};
 use std::ptr::addr_of;
 
@@ -246,57 +245,13 @@ extern "C" fn ngx_http_howto_commands_add_param(
     std::ptr::null_mut()
 }
 
-// HTTP request handler - minimal glue code orchestrating domain layer
+// HTTP request handler - correctness guaranteed by types (Ghost of Departed Proofs)
 http_request_handler!(howto_access_handler, |request: &mut http::Request| {
-    let co = Module::location_conf(request).expect("module config is none");
+    let config = Module::location_conf(request).expect("module config is none");
 
-    // Skip if not configured
-    if co.db_path.is_empty() || co.query.is_empty() || co.template_path.is_empty() {
-        return Status::NGX_OK;
+    // Type-safe gate: only proceed if we have proof of valid config
+    match ValidConfigToken::new(config) {
+        Some(valid_config) => process_request(request, valid_config),
+        None => Status::NGX_OK, // Not configured - skip silently
     }
-
-    // Parse configuration into validated domain types
-    let validated_config = match parsing::parse_config(co) {
-        Ok(config) => config,
-        Err(e) => return log_error(request, "config parse error", &e, http::HTTPStatus::INTERNAL_SERVER_ERROR),
-    };
-
-    // Get document root and URI from nginx
-    let (doc_root, uri) = match get_doc_root_and_uri(request) {
-        Ok(paths) => paths,
-        Err(e) => return log_error(request, "path resolution error", &e, http::HTTPStatus::INTERNAL_SERVER_ERROR),
-    };
-
-    // Resolve template path (pure function)
-    let resolved_template = domain::resolve_template_path(&doc_root, &uri, &validated_config.template_path);
-
-    // Resolve parameters from nginx variables
-    let var_resolver = NginxVariableResolver::new(request);
-    let resolved_params = match domain::resolve_parameters(&validated_config.parameters, &var_resolver) {
-        Ok(params) => params,
-        Err(e) => return log_error(request, "parameter resolution error", &e, http::HTTPStatus::BAD_REQUEST),
-    };
-
-    // Create processor with injected dependencies
-    let mut reg = handlebars::Handlebars::new();
-    let reg_ptr: *mut handlebars::Handlebars<'static> = unsafe { std::mem::transmute(&mut reg) };
-    let hbs_adapter = unsafe { HandlebarsAdapter::new(reg_ptr) };
-    let processor = RequestProcessor::new(SqliteQueryExecutor, hbs_adapter, hbs_adapter);
-
-    // Get global template directory
-    let main_conf = Module::main_conf(request).expect("main config is none");
-    let global_dir = if !main_conf.global_templates_dir.is_empty() {
-        Some(main_conf.global_templates_dir.as_str())
-    } else {
-        None
-    };
-
-    // Process request through functional core
-    let body = match processor.process(&validated_config, &resolved_template, &resolved_params, global_dir) {
-        Ok(html) => html,
-        Err(e) => return log_error(request, "request processing error", &e, http::HTTPStatus::INTERNAL_SERVER_ERROR),
-    };
-
-    // Send response
-    send_response(request, &body)
 });
