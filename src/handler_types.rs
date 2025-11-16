@@ -1,14 +1,15 @@
 //! Handler-specific types that guarantee correctness
 
 use crate::adapters::{HandlebarsAdapter, NginxVariableResolver, SqliteQueryExecutor};
-use crate::config::{MainConfig, ModuleConfig};
+use crate::config::ModuleConfig;
+use crate::content_type::{negotiate_content_type, ContentType};
 use crate::domain::{RequestProcessor, ValidatedConfig};
 use crate::logging;
-use crate::nginx_helpers::{get_doc_root_and_uri, send_response};
+use crate::nginx_helpers::{get_doc_root_and_uri, send_response, send_json_response};
 use crate::parsing;
 use crate::{Module, domain};
 use ngx::core::Status;
-use ngx::http::{HttpModuleLocationConf, HttpModuleMainConf};
+use ngx::http::HttpModuleMainConf;
 
 /// Proof that we have valid configuration (Ghost of Departed Proofs)
 pub struct ValidConfigToken<'a> {
@@ -97,16 +98,25 @@ pub fn process_request(request: &mut ngx::http::Request, config: ValidConfigToke
             }
         };
 
-    // Execute and render
-    let html = execute_with_processor(
-        &validated_config,
-        &resolved_template,
-        &resolved_params,
-        request,
-    );
+    // Negotiate content type based on Accept header
+    let content_type = negotiate_content_type(request);
 
-    // Send response
-    send_response(request, &html)
+    // Execute query and format response
+    match content_type {
+        ContentType::Json => {
+            let json = execute_json(&validated_config, &resolved_params, request);
+            send_json_response(request, &json)
+        }
+        ContentType::Html => {
+            let html = execute_with_processor(
+                &validated_config,
+                &resolved_template,
+                &resolved_params,
+                request,
+            );
+            send_response(request, &html)
+        }
+    }
 }
 
 /// Execute query and render with proper dependency injection
@@ -182,6 +192,45 @@ fn execute_with_processor(
 </html>"#,
                 e
             )
+        }
+    }
+}
+
+/// Execute query and return JSON (no template rendering)
+fn execute_json(
+    config: &ValidatedConfig,
+    resolved_params: &[(String, String)],
+    request: &mut ngx::http::Request,
+) -> String {
+    use crate::domain::QueryExecutor;
+    
+    let executor = SqliteQueryExecutor;
+    
+    match executor.execute(&config.db_path, &config.query, resolved_params) {
+        Ok(results) => {
+            logging::log(
+                request,
+                logging::LogLevel::Info,
+                "success",
+                &format!("Returned {} JSON results with {} params", results.len(), resolved_params.len()),
+            );
+            serde_json::to_string_pretty(&results).unwrap_or_else(|e| {
+                logging::log(
+                    request,
+                    logging::LogLevel::Error,
+                    "json",
+                    &format!("JSON serialization failed: {}", e),
+                );
+                "[]".to_string()
+            })
+        }
+        Err(e) => {
+            logging::log_query_error(request, config.query.as_str(), &e);
+            let error_obj = serde_json::json!({
+                "error": "Query execution failed",
+                "details": e
+            });
+            serde_json::to_string(&error_obj).unwrap_or_else(|_| r#"{"error":"serialization failed"}"#.to_string())
         }
     }
 }

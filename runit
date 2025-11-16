@@ -1,5 +1,0 @@
-./ngx_src/nginx-1.28.0/objs/nginx \
-    -e /dev/stdout \
-    -p "$PWD" \
-    -c conf/howto.conf \
-    -g 'daemon off;'

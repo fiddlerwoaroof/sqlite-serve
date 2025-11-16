@@ -14,8 +14,6 @@ pub enum LogLevel {
 
 /// Log a message with context using nginx's native logging
 pub fn log(request: &mut Request, level: LogLevel, module: &str, message: &str) {
-    let r: *mut ngx::ffi::ngx_http_request_t = request.into();
-
     let log_level = match level {
         LogLevel::Error => 3, // NGX_LOG_ERR
         LogLevel::Warn => 4,  // NGX_LOG_WARN

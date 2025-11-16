@@ -173,18 +173,6 @@ pub enum ParameterBinding {
     },
 }
 
-impl ParameterBinding {
-    pub fn param_name(&self) -> String {
-        match self {
-            ParameterBinding::Positional { .. } | ParameterBinding::PositionalLiteral { .. } => {
-                String::new()
-            }
-            ParameterBinding::Named { name, .. } | ParameterBinding::NamedLiteral { name, .. } => {
-                name.as_str().to_string()
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

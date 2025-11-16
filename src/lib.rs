@@ -2,6 +2,7 @@
 
 mod adapters;
 mod config;
+mod content_type;
 mod domain;
 mod handler_types;
 mod logging;
