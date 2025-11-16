@@ -1,5 +1,6 @@
 //! sqlite-serve - NGINX module for serving dynamic content from SQLite databases
 
+mod adapters;
 mod config;
 mod domain;
 mod query;
@@ -7,10 +8,9 @@ mod template;
 mod types;
 mod variable;
 
+use adapters::{HandlebarsAdapter, NginxVariableResolver, SqliteQueryExecutor};
 use config::{MainConfig, ModuleConfig};
-use query::execute_query;
-use template::load_templates_from_dir;
-use variable::resolve_variable;
+use domain::RequestProcessor;
 use ngx::ffi::{
     NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_HTTP_LOC_CONF, NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE,
     NGX_HTTP_LOC_CONF_OFFSET, NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_command_t, ngx_conf_t,
@@ -20,7 +20,6 @@ use ngx::core::Buffer;
 use ngx::ffi::ngx_chain_t;
 use ngx::http::{HttpModule, HttpModuleLocationConf, HttpModuleMainConf, NgxHttpCoreModule};
 use ngx::{core::Status, http, http_request_handler, ngx_log_debug_http, ngx_modules, ngx_string};
-use serde_json::json;
 use std::os::raw::{c_char, c_void};
 use std::ptr::addr_of;
 
@@ -246,7 +245,7 @@ extern "C" fn ngx_http_howto_commands_add_param(
     std::ptr::null_mut()
 }
 
-// HTTP request handler - processes SQLite queries and renders templates
+// HTTP request handler using functional core with dependency injection
 http_request_handler!(howto_access_handler, |request: &mut http::Request| {
     let co = Module::location_conf(request).expect("module config is none");
 
@@ -257,7 +256,86 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
 
     ngx_log_debug_http!(request, "sqlite module handler called");
 
-    // Resolve template path relative to document root and location
+    // Parse and validate configuration into domain types
+    let db_path = match types::DatabasePath::parse(&co.db_path) {
+        Ok(p) => p,
+        Err(e) => {
+            ngx_log_debug_http!(request, "invalid db path: {}", e);
+            return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
+        }
+    };
+
+    let query = match types::SqlQuery::parse(&co.query) {
+        Ok(q) => q,
+        Err(e) => {
+            ngx_log_debug_http!(request, "invalid query: {}", e);
+            return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
+        }
+    };
+
+    let template_path = match types::TemplatePath::parse(&co.template_path) {
+        Ok(t) => t,
+        Err(e) => {
+            ngx_log_debug_http!(request, "invalid template path: {}", e);
+            return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
+        }
+    };
+
+    // Parse parameter bindings
+    let mut bindings = Vec::new();
+    for (param_name, var_name) in &co.query_params {
+        let binding = if var_name.starts_with('$') {
+            let variable = match types::NginxVariable::parse(var_name) {
+                Ok(v) => v,
+                Err(e) => {
+                    ngx_log_debug_http!(request, "invalid variable: {}", e);
+                    return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
+                }
+            };
+
+            if param_name.is_empty() {
+                types::ParameterBinding::Positional { variable }
+            } else {
+                let name = match types::ParamName::parse(param_name) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        ngx_log_debug_http!(request, "invalid param name: {}", e);
+                        return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
+                    }
+                };
+                types::ParameterBinding::Named { name, variable }
+            }
+        } else {
+            // Literal value
+            if param_name.is_empty() {
+                types::ParameterBinding::PositionalLiteral {
+                    value: var_name.clone(),
+                }
+            } else {
+                let name = match types::ParamName::parse(param_name) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        ngx_log_debug_http!(request, "invalid param name: {}", e);
+                        return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
+                    }
+                };
+                types::ParameterBinding::NamedLiteral {
+                    name,
+                    value: var_name.clone(),
+                }
+            }
+        };
+        bindings.push(binding);
+    }
+
+    let validated_config = domain::ValidatedConfig {
+        db_path,
+        query,
+        template_path,
+        parameters: bindings,
+    };
+
+    // Resolve template path relative to document root and URI
     let core_loc_conf =
         NgxHttpCoreModule::location_conf(request).expect("failed to get core location conf");
     let doc_root = match (*core_loc_conf).root.to_str() {
@@ -274,96 +352,51 @@ http_request_handler!(howto_access_handler, |request: &mut http::Request| {
             return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
         }
     };
-    let template_full_path = format!("{}{}/{}", doc_root, uri, co.template_path);
 
-    ngx_log_debug_http!(request, "resolved template path: {}", template_full_path);
+    let resolved_template = domain::resolve_template_path(doc_root, uri, &validated_config.template_path);
 
-    // Get the directory containing the main template for local templates
-    let template_dir = std::path::Path::new(&template_full_path)
-        .parent()
-        .and_then(|p| p.to_str())
-        .unwrap_or("");
+    ngx_log_debug_http!(request, "resolved template path: {}", resolved_template.full_path());
 
-    // Resolve query parameters from nginx variables
-    let mut param_values: Vec<(String, String)> = Vec::new();
-    for (param_name, var_name) in &co.query_params {
-        match resolve_variable(request, var_name) {
-            Ok(value) => {
-                param_values.push((param_name.clone(), value));
-            }
-            Err(_) => {
-                return http::HTTPStatus::BAD_REQUEST.into();
-            }
+    // Resolve parameters using nginx variable resolver
+    let var_resolver = NginxVariableResolver::new(request);
+    let resolved_params = match domain::resolve_parameters(&validated_config.parameters, &var_resolver) {
+        Ok(params) => params,
+        Err(e) => {
+            ngx_log_debug_http!(request, "failed to resolve parameters: {}", e);
+            return http::HTTPStatus::BAD_REQUEST.into();
         }
-    }
+    };
 
-    ngx_log_debug_http!(
-        request,
-        "executing query with {} parameters",
-        param_values.len()
+    ngx_log_debug_http!(request, "resolved {} parameters", resolved_params.len());
+
+    // Create domain processor with adapters (dependency injection)
+    let mut reg = handlebars::Handlebars::new();
+    let reg_ptr: *mut handlebars::Handlebars<'static> = unsafe { std::mem::transmute(&mut reg) };
+    let hbs_adapter = unsafe { HandlebarsAdapter::new(reg_ptr) };
+    let processor = RequestProcessor::new(
+        SqliteQueryExecutor,
+        hbs_adapter,
+        hbs_adapter,
     );
 
-    // Execute the configured SQL query with parameters
-    let results = match execute_query(&co.db_path, &co.query, &param_values) {
-        Ok(results) => results,
-        Err(e) => {
-            ngx_log_debug_http!(request, "failed to execute query: {}", e);
-            return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
-        }
-    };
-
-    // Setup Handlebars and load templates
-    let mut reg = handlebars::Handlebars::new();
-
-    // First, load global templates if configured
+    // Get global template directory from main config
     let main_conf = Module::main_conf(request).expect("main config is none");
-    if !main_conf.global_templates_dir.is_empty() {
-        match load_templates_from_dir(&mut reg, &main_conf.global_templates_dir) {
-            Ok(count) => {
-                ngx_log_debug_http!(
-                    request,
-                    "loaded {} global templates from {}",
-                    count,
-                    main_conf.global_templates_dir
-                );
-            }
-            Err(e) => {
-                ngx_log_debug_http!(request, "warning: failed to load global templates: {}", e);
-            }
-        }
-    }
+    let global_dir = if !main_conf.global_templates_dir.is_empty() {
+        Some(main_conf.global_templates_dir.as_str())
+    } else {
+        None
+    };
 
-    // Then, load local templates (these override global ones)
-    match load_templates_from_dir(&mut reg, template_dir) {
-        Ok(count) => {
-            ngx_log_debug_http!(request, "loaded {} local templates from {}", count, template_dir);
-        }
+    // Process request through functional core
+    let body = match processor.process(&validated_config, &resolved_template, &resolved_params, global_dir) {
+        Ok(html) => html,
         Err(e) => {
-            ngx_log_debug_http!(request, "warning: failed to load local templates: {}", e);
-        }
-    }
-
-    // Finally, register the main template (overriding if it was loaded from directories)
-    match reg.register_template_file("template", &template_full_path) {
-        Ok(_) => {
-            ngx_log_debug_http!(request, "registered main template: {}", template_full_path);
-        }
-        Err(e) => {
-            ngx_log_debug_http!(request, "failed to load main template: {}", e);
-            return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
-        }
-    }
-
-    // Render the template with query results
-    let body = match reg.render("template", &json!({"results": results})) {
-        Ok(body) => body,
-        Err(e) => {
-            ngx_log_debug_http!(request, "failed to render template: {}", e);
+            ngx_log_debug_http!(request, "request processing failed: {}", e);
             return http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
         }
     };
 
-    // Create output buffer
+    // Create output buffer (imperative shell)
     let mut buf = match request.pool().create_buffer_from_str(&body) {
         Some(buf) => buf,
         None => return http::HTTPStatus::INTERNAL_SERVER_ERROR.into(),

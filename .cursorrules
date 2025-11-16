@@ -1,1 +1,2 @@
 - Always use `direnv exec "$PWD"` when invoking cargo and other tools that need access to the nix/direnv environment
+- Avoid using `head` and `tail` to avoid missing output
