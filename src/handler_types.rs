@@ -6,7 +6,7 @@ use crate::domain::{RequestProcessor, ValidatedConfig};
 use crate::logging;
 use crate::nginx_helpers::{get_doc_root_and_uri, send_response};
 use crate::parsing;
-use crate::{domain, Module};
+use crate::{Module, domain};
 use ngx::core::Status;
 use ngx::http::{HttpModuleLocationConf, HttpModuleMainConf};
 
@@ -31,15 +31,15 @@ impl<'a> ValidConfigToken<'a> {
 
 /// Process a request with guaranteed valid configuration
 /// Returns Status directly - no Result needed, types prove correctness
-pub fn process_request(
-    request: &mut ngx::http::Request,
-    config: ValidConfigToken,
-) -> Status {
+pub fn process_request(request: &mut ngx::http::Request, config: ValidConfigToken) -> Status {
     logging::log(
         request,
         logging::LogLevel::Debug,
         "handler",
-        &format!("Processing request for {}", request.unparsed_uri().to_str().unwrap_or("unknown")),
+        &format!(
+            "Processing request for {}",
+            request.unparsed_uri().to_str().unwrap_or("unknown")
+        ),
     );
 
     // Parse config into validated types
@@ -55,13 +55,19 @@ pub fn process_request(
     let (doc_root, uri) = match get_doc_root_and_uri(request) {
         Ok(paths) => paths,
         Err(e) => {
-            logging::log(request, logging::LogLevel::Error, "nginx", &format!("Path resolution failed: {}", e));
+            logging::log(
+                request,
+                logging::LogLevel::Error,
+                "nginx",
+                &format!("Path resolution failed: {}", e),
+            );
             return ngx::http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
         }
     };
 
     // Resolve template path (pure function - cannot fail)
-    let resolved_template = domain::resolve_template_path(&doc_root, &uri, &validated_config.template_path);
+    let resolved_template =
+        domain::resolve_template_path(&doc_root, &uri, &validated_config.template_path);
 
     logging::log(
         request,
@@ -72,27 +78,33 @@ pub fn process_request(
 
     // Resolve parameters
     let var_resolver = NginxVariableResolver::new(request);
-    let resolved_params = match domain::resolve_parameters(&validated_config.parameters, &var_resolver) {
-        Ok(params) => {
-            if !params.is_empty() {
-                logging::log(
-                    request,
-                    logging::LogLevel::Debug,
-                    "params",
-                    &format!("Resolved {} parameters", params.len()),
-                );
+    let resolved_params =
+        match domain::resolve_parameters(&validated_config.parameters, &var_resolver) {
+            Ok(params) => {
+                if !params.is_empty() {
+                    logging::log(
+                        request,
+                        logging::LogLevel::Debug,
+                        "params",
+                        &format!("Resolved {} parameters", params.len()),
+                    );
+                }
+                params
             }
-            params
-        }
-        Err(e) => {
-            logging::log_param_error(request, "variable", &e);
-            return ngx::http::HTTPStatus::BAD_REQUEST.into();
-        }
-    };
+            Err(e) => {
+                logging::log_param_error(request, "variable", &e);
+                return ngx::http::HTTPStatus::BAD_REQUEST.into();
+            }
+        };
 
     // Execute and render
-    let html = execute_with_processor(&validated_config, &resolved_template, &resolved_params, request);
-    
+    let html = execute_with_processor(
+        &validated_config,
+        &resolved_template,
+        &resolved_params,
+        request,
+    );
+
     // Send response
     send_response(request, &html)
 }
@@ -107,21 +119,12 @@ fn execute_with_processor(
     let mut reg = handlebars::Handlebars::new();
     let reg_ptr: *mut handlebars::Handlebars<'static> = unsafe { std::mem::transmute(&mut reg) };
     let hbs_adapter = unsafe { HandlebarsAdapter::new(reg_ptr) };
-    
-    let processor = RequestProcessor::new(
-        SqliteQueryExecutor,
-        hbs_adapter,
-        hbs_adapter,
-    );
+
+    let processor = RequestProcessor::new(SqliteQueryExecutor, hbs_adapter, hbs_adapter);
 
     let main_conf = Module::main_conf(request).expect("main config is none");
     let global_dir = if !main_conf.global_templates_dir.is_empty() {
-        logging::log_template_loading(
-            request,
-            "global",
-            0,
-            &main_conf.global_templates_dir,
-        );
+        logging::log_template_loading(request, "global", 0, &main_conf.global_templates_dir);
         Some(main_conf.global_templates_dir.as_str())
     } else {
         None
@@ -137,7 +140,11 @@ fn execute_with_processor(
                 "success",
                 &format!(
                     "Rendered {} with {} params",
-                    resolved_template.full_path().split('/').last().unwrap_or("template"),
+                    resolved_template
+                        .full_path()
+                        .split('/')
+                        .last()
+                        .unwrap_or("template"),
                     resolved_params.len()
                 ),
             );
@@ -235,4 +242,3 @@ mod tests {
         assert!(token.is_none());
     }
 }
-

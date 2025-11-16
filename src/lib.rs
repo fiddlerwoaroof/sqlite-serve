@@ -13,11 +13,11 @@ mod types;
 mod variable;
 
 use config::{MainConfig, ModuleConfig};
-use handler_types::{process_request, ValidConfigToken};
+use handler_types::{ValidConfigToken, process_request};
 use ngx::ffi::{
-    NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_HTTP_LOC_CONF, NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE,
-    NGX_HTTP_LOC_CONF_OFFSET, NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_command_t, ngx_conf_t,
-    ngx_http_module_t, ngx_int_t, ngx_module_t, ngx_str_t, ngx_uint_t,
+    NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_HTTP_LOC_CONF, NGX_HTTP_LOC_CONF_OFFSET,
+    NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE, NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_command_t,
+    ngx_conf_t, ngx_http_module_t, ngx_int_t, ngx_module_t, ngx_str_t, ngx_uint_t,
 };
 use ngx::http::{HttpModule, HttpModuleLocationConf, HttpModuleMainConf, NgxHttpCoreModule};
 use ngx::{core::Status, http, http_request_handler, ngx_modules, ngx_string};
@@ -209,8 +209,8 @@ extern "C" fn ngx_http_howto_commands_set_template_path(
         conf.template_path = (*args.add(1)).to_string();
 
         // Set the content handler for this location
-        let clcf = NgxHttpCoreModule::location_conf_mut(&*cf)
-            .expect("failed to get core location conf");
+        let clcf =
+            NgxHttpCoreModule::location_conf_mut(&*cf).expect("failed to get core location conf");
         clcf.handler = Some(howto_access_handler);
     };
 

@@ -31,11 +31,9 @@ pub fn execute_query(
             let value: Value = match row.get_ref(i)? {
                 rusqlite::types::ValueRef::Null => Value::Null,
                 rusqlite::types::ValueRef::Integer(v) => Value::Number(v.into()),
-                rusqlite::types::ValueRef::Real(v) => {
-                    serde_json::Number::from_f64(v)
-                        .map(Value::Number)
-                        .unwrap_or(Value::Null)
-                }
+                rusqlite::types::ValueRef::Real(v) => serde_json::Number::from_f64(v)
+                    .map(Value::Number)
+                    .unwrap_or(Value::Null),
                 rusqlite::types::ValueRef::Text(v) => {
                     Value::String(String::from_utf8_lossy(v).to_string())
                 }
@@ -90,11 +88,8 @@ mod tests {
 
         {
             let conn = Connection::open(temp_path).unwrap();
-            conn.execute(
-                "CREATE TABLE test (id INTEGER, name TEXT, value REAL)",
-                [],
-            )
-            .unwrap();
+            conn.execute("CREATE TABLE test (id INTEGER, name TEXT, value REAL)", [])
+                .unwrap();
             conn.execute(
                 "INSERT INTO test VALUES (1, 'first', 1.5), (2, 'second', 2.5)",
                 [],
@@ -104,10 +99,7 @@ mod tests {
 
         let results = execute_query(temp_path, "SELECT * FROM test ORDER BY id", &[]).unwrap();
         assert_eq!(results.len(), 2);
-        assert_eq!(
-            results[0].get("id").unwrap(),
-            &Value::Number(1.into())
-        );
+        assert_eq!(results[0].get("id").unwrap(), &Value::Number(1.into()));
         assert_eq!(
             results[0].get("name").unwrap(),
             &Value::String("first".to_string())
@@ -157,8 +149,11 @@ mod tests {
 
         {
             let conn = Connection::open(temp_path).unwrap();
-            conn.execute("CREATE TABLE books (id INTEGER, title TEXT, year INTEGER)", [])
-                .unwrap();
+            conn.execute(
+                "CREATE TABLE books (id INTEGER, title TEXT, year INTEGER)",
+                [],
+            )
+            .unwrap();
             conn.execute(
                 "INSERT INTO books VALUES (1, 'Old Book', 2000), (2, 'New Book', 2020), (3, 'Newer Book', 2023)",
                 [],
@@ -218,10 +213,7 @@ mod tests {
         let row = &results[0];
 
         assert_eq!(row.get("id").unwrap(), &Value::Number(42.into()));
-        assert_eq!(
-            row.get("name").unwrap(),
-            &Value::String("test".to_string())
-        );
+        assert_eq!(row.get("name").unwrap(), &Value::String("test".to_string()));
         assert_eq!(row.get("price").unwrap().as_f64().unwrap(), 3.14);
         assert_eq!(
             row.get("data").unwrap(),
@@ -242,8 +234,11 @@ mod tests {
 
         {
             let conn = Connection::open(temp_path).unwrap();
-            conn.execute("CREATE TABLE books (id INTEGER, genre TEXT, rating REAL)", [])
-                .unwrap();
+            conn.execute(
+                "CREATE TABLE books (id INTEGER, genre TEXT, rating REAL)",
+                [],
+            )
+            .unwrap();
             conn.execute(
                 "INSERT INTO books VALUES 
                     (1, 'Fiction', 4.5),
@@ -324,4 +319,3 @@ mod tests {
         let _ = fs::remove_file(temp_path);
     }
 }
-

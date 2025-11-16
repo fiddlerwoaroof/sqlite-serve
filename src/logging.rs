@@ -15,29 +15,21 @@ pub enum LogLevel {
 /// Log a message with context using nginx's native logging
 pub fn log(request: &mut Request, level: LogLevel, module: &str, message: &str) {
     let r: *mut ngx::ffi::ngx_http_request_t = request.into();
-    
+
     let log_level = match level {
-        LogLevel::Error => 3,  // NGX_LOG_ERR
-        LogLevel::Warn => 4,   // NGX_LOG_WARN
-        LogLevel::Info => 6,   // NGX_LOG_INFO
-        LogLevel::Debug => 7,  // NGX_LOG_DEBUG
+        LogLevel::Error => 3, // NGX_LOG_ERR
+        LogLevel::Warn => 4,  // NGX_LOG_WARN
+        LogLevel::Info => 6,  // NGX_LOG_INFO
+        LogLevel::Debug => 7, // NGX_LOG_DEBUG
     };
 
+    let r: *mut ngx::ffi::ngx_http_request_t = request.into();
     unsafe {
         let connection = (*r).connection;
         if !connection.is_null() {
-            let log_ptr = (*connection).log;
-            if !log_ptr.is_null() {
-                // ngx_log_error! requires a string literal, so we use the C API directly
-                let c_msg = std::ffi::CString::new(format!("[sqlite-serve:{}] {}", module, message))
-                    .unwrap_or_else(|_| std::ffi::CString::new("log message error").unwrap());
-                
-                ngx::ffi::ngx_log_error_core(
-                    log_level as ngx::ffi::ngx_uint_t,
-                    log_ptr,
-                    0,
-                    c_msg.as_ptr(),
-                );
+            let log = (*connection).log;
+            if !log.is_null() {
+                ngx_log_error!(log_level, log, "[sqlite-serve:{}] {}", module, message);
             }
         }
     }
@@ -128,4 +120,3 @@ mod tests {
         assert_eq!(levels.len(), 4);
     }
 }
-

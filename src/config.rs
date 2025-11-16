@@ -130,4 +130,3 @@ mod tests {
         assert_eq!(config.global_templates_dir, "templates/global");
     }
 }
-

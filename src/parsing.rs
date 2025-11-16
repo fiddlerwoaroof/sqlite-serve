@@ -2,15 +2,16 @@
 
 use crate::config::ModuleConfig;
 use crate::domain::ValidatedConfig;
-use crate::types::{DatabasePath, NginxVariable, ParamName, ParameterBinding, SqlQuery, TemplatePath};
+use crate::types::{
+    DatabasePath, NginxVariable, ParamName, ParameterBinding, SqlQuery, TemplatePath,
+};
 
 /// Parse raw configuration into validated domain configuration
 pub fn parse_config(config: &ModuleConfig) -> Result<ValidatedConfig, String> {
-    let db_path = DatabasePath::parse(&config.db_path)
-        .map_err(|e| format!("invalid db_path: {}", e))?;
+    let db_path =
+        DatabasePath::parse(&config.db_path).map_err(|e| format!("invalid db_path: {}", e))?;
 
-    let query = SqlQuery::parse(&config.query)
-        .map_err(|e| format!("invalid query: {}", e))?;
+    let query = SqlQuery::parse(&config.query).map_err(|e| format!("invalid query: {}", e))?;
 
     let template_path = TemplatePath::parse(&config.template_path)
         .map_err(|e| format!("invalid template_path: {}", e))?;
@@ -26,9 +27,7 @@ pub fn parse_config(config: &ModuleConfig) -> Result<ValidatedConfig, String> {
 }
 
 /// Parse parameter configuration into typed bindings
-fn parse_parameter_bindings(
-    params: &[(String, String)],
-) -> Result<Vec<ParameterBinding>, String> {
+fn parse_parameter_bindings(params: &[(String, String)]) -> Result<Vec<ParameterBinding>, String> {
     let mut bindings = Vec::new();
 
     for (param_name, var_name) in params {
@@ -169,4 +168,3 @@ mod tests {
         }
     }
 }
-

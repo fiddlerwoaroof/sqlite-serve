@@ -36,16 +36,16 @@ impl SqlQuery {
     pub fn parse(query: impl Into<String>) -> Result<Self, String> {
         let query = query.into();
         let trimmed = query.trim().to_uppercase();
-        
+
         if trimmed.is_empty() {
             return Err("query cannot be empty".to_string());
         }
-        
+
         // Ensure it's a SELECT query (read-only)
         if !trimmed.starts_with("SELECT") {
             return Err("only SELECT queries are allowed".to_string());
         }
-        
+
         Ok(SqlQuery(query))
     }
 
@@ -62,16 +62,16 @@ impl TemplatePath {
     /// Parse and validate a template path
     pub fn parse(path: impl AsRef<Path>) -> Result<Self, String> {
         let path = path.as_ref();
-        
+
         if path.as_os_str().is_empty() {
             return Err("template path cannot be empty".to_string());
         }
-        
+
         // Ensure it's a .hbs file
         if path.extension().and_then(|e| e.to_str()) != Some("hbs") {
             return Err("template must be a .hbs file".to_string());
         }
-        
+
         Ok(TemplatePath(path.to_path_buf()))
     }
 
@@ -92,28 +92,28 @@ impl NginxVariable {
     /// Parse a nginx variable name
     pub fn parse(name: impl Into<String>) -> Result<Self, String> {
         let name = name.into();
-        
+
         if name.is_empty() {
             return Err("variable name cannot be empty".to_string());
         }
-        
+
         if !name.starts_with('$') {
             return Err(format!("variable name must start with $: {}", name));
         }
-        
+
         // Get the part after $
         let var_name = &name[1..];
         if var_name.is_empty() {
             return Err("variable name after $ cannot be empty".to_string());
         }
-        
+
         Ok(NginxVariable(name))
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
     }
-    
+
     /// Get the variable name without the $ prefix
     pub fn name(&self) -> &str {
         &self.0[1..]
@@ -128,23 +128,23 @@ impl ParamName {
     /// Parse a SQL parameter name
     pub fn parse(name: impl Into<String>) -> Result<Self, String> {
         let name = name.into();
-        
+
         if name.is_empty() {
             return Err("parameter name cannot be empty".to_string());
         }
-        
+
         if !name.starts_with(':') {
             return Err(format!("parameter name must start with :: {}", name));
         }
-        
+
         Ok(ParamName(name))
     }
-    
+
     /// Create an empty (positional) parameter name
     pub fn positional() -> Self {
         ParamName(String::new())
     }
-    
+
     pub fn is_positional(&self) -> bool {
         self.0.is_empty()
     }
@@ -157,10 +157,20 @@ impl ParamName {
 /// A parameter binding (param name + variable or literal)
 #[derive(Debug, Clone)]
 pub enum ParameterBinding {
-    Positional { variable: NginxVariable },
-    PositionalLiteral { value: String },
-    Named { name: ParamName, variable: NginxVariable },
-    NamedLiteral { name: ParamName, value: String },
+    Positional {
+        variable: NginxVariable,
+    },
+    PositionalLiteral {
+        value: String,
+    },
+    Named {
+        name: ParamName,
+        variable: NginxVariable,
+    },
+    NamedLiteral {
+        name: ParamName,
+        value: String,
+    },
 }
 
 impl ParameterBinding {
@@ -300,4 +310,3 @@ mod tests {
         assert!(result.unwrap_err().contains(":"));
     }
 }
-

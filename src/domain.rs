@@ -25,7 +25,7 @@ impl ResolvedTemplate {
     pub fn full_path(&self) -> &str {
         &self.full_path
     }
-    
+
     pub fn directory(&self) -> &str {
         &self.directory
     }
@@ -231,11 +231,9 @@ mod tests {
 
     #[test]
     fn test_resolve_parameters_positional() {
-        let bindings = vec![
-            ParameterBinding::Positional {
-                variable: NginxVariable::parse("$arg_id").unwrap(),
-            },
-        ];
+        let bindings = vec![ParameterBinding::Positional {
+            variable: NginxVariable::parse("$arg_id").unwrap(),
+        }];
 
         let resolver = MockVariableResolver;
         let resolved = resolve_parameters(&bindings, &resolver).unwrap();
@@ -247,12 +245,10 @@ mod tests {
 
     #[test]
     fn test_resolve_parameters_named() {
-        let bindings = vec![
-            ParameterBinding::Named {
-                name: ParamName::parse(":book_id").unwrap(),
-                variable: NginxVariable::parse("$arg_id").unwrap(),
-            },
-        ];
+        let bindings = vec![ParameterBinding::Named {
+            name: ParamName::parse(":book_id").unwrap(),
+            variable: NginxVariable::parse("$arg_id").unwrap(),
+        }];
 
         let resolver = MockVariableResolver;
         let resolved = resolve_parameters(&bindings, &resolver).unwrap();
@@ -264,11 +260,9 @@ mod tests {
 
     #[test]
     fn test_resolve_parameters_literal() {
-        let bindings = vec![
-            ParameterBinding::PositionalLiteral {
-                value: "constant".to_string(),
-            },
-        ];
+        let bindings = vec![ParameterBinding::PositionalLiteral {
+            value: "constant".to_string(),
+        }];
 
         let resolver = MockVariableResolver;
         let resolved = resolve_parameters(&bindings, &resolver).unwrap();
@@ -291,11 +285,8 @@ mod tests {
             directory: "templates".to_string(),
         };
 
-        let processor = RequestProcessor::new(
-            MockQueryExecutor,
-            MockTemplateLoader,
-            MockTemplateRenderer,
-        );
+        let processor =
+            RequestProcessor::new(MockQueryExecutor, MockTemplateLoader, MockTemplateRenderer);
 
         let result = processor.process(&config, &resolved_template, &[], None);
 
@@ -303,4 +294,3 @@ mod tests {
         assert!(result.unwrap().contains("Rendered"));
     }
 }
-

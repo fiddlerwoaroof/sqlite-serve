@@ -41,8 +41,7 @@ impl QueryExecutor for SqliteQueryExecutor {
         query: &SqlQuery,
         params: &[(String, String)],
     ) -> Result<Vec<HashMap<String, Value>>, String> {
-        query::execute_query(db_path.as_str(), query.as_str(), params)
-            .map_err(|e| e.to_string())
+        query::execute_query(db_path.as_str(), query.as_str(), params).map_err(|e| e.to_string())
     }
 }
 
@@ -54,7 +53,7 @@ pub struct HandlebarsAdapter {
 
 impl HandlebarsAdapter {
     /// Create adapter from mutable handlebars registry
-    /// 
+    ///
     /// # Safety
     /// Caller must ensure the registry outlives this adapter
     pub unsafe fn new(registry: *mut Handlebars<'static>) -> Self {
@@ -81,7 +80,11 @@ impl TemplateLoader for HandlebarsAdapter {
 
 impl TemplateRenderer for HandlebarsAdapter {
     fn render(&self, template_name: &str, data: &Value) -> Result<String, String> {
-        unsafe { (*self.registry).render(template_name, data).map_err(|e| e.to_string()) }
+        unsafe {
+            (*self.registry)
+                .render(template_name, data)
+                .map_err(|e| e.to_string())
+        }
     }
 }
 
@@ -136,9 +139,7 @@ mod tests {
         let reg_ptr: *mut Handlebars<'static> = unsafe { std::mem::transmute(&mut reg) };
         let adapter = unsafe { HandlebarsAdapter::new(reg_ptr) };
 
-        adapter
-            .register_template("test", &template_path)
-            .unwrap();
+        adapter.register_template("test", &template_path).unwrap();
 
         let data = serde_json::json!({"name": "World"});
         let rendered = adapter.render("test", &data).unwrap();
@@ -148,4 +149,3 @@ mod tests {
         let _ = fs::remove_dir_all(temp_dir);
     }
 }
-

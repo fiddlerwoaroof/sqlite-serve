@@ -86,8 +86,8 @@ mod tests {
     fn test_named_params_parsing() {
         // Test parameter name parsing logic
         let test_cases = vec![
-            (2, false, ""),          // sqlite_param $arg_id
-            (3, true, ":book_id"),   // sqlite_param :book_id $arg_id
+            (2, false, ""),        // sqlite_param $arg_id
+            (3, true, ":book_id"), // sqlite_param :book_id $arg_id
         ];
 
         for (nelts, expected_is_named, expected_param_name) in test_cases {
@@ -103,4 +103,3 @@ mod tests {
         }
     }
 }
-
