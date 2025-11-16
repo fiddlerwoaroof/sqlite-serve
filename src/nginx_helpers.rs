@@ -1,5 +1,6 @@
 //! NGINX-specific helper functions
 
+use crate::content_type::ContentType;
 use crate::logging;
 use ngx::core::Buffer;
 use ngx::ffi::ngx_chain_t;
@@ -28,16 +29,16 @@ pub fn get_doc_root_and_uri(request: &mut Request) -> Result<(String, String), S
 
 /// Send HTML response
 pub fn send_response(request: &mut Request, body: &str) -> Status {
-    send_response_with_content_type(request, body, "text/html; charset=utf-8")
+    send_response_with_content_type(request, body, &ContentType::Html)
 }
 
-/// Send JSON response  
+/// Send JSON response
 pub fn send_json_response(request: &mut Request, body: &str) -> Status {
-    send_response_with_content_type(request, body, "application/json; charset=utf-8")
+    send_response_with_content_type(request, body, &ContentType::Json)
 }
 
 /// Create and send nginx response buffer with specified content type
-fn send_response_with_content_type(request: &mut Request, body: &str, _content_type: &str) -> Status {
+fn send_response_with_content_type(request: &mut Request, body: &str, content_type: &ContentType) -> Status {
     // Create output buffer
     let mut buf = match request.pool().create_buffer_from_str(body) {
         Some(buf) => buf,
@@ -54,9 +55,10 @@ fn send_response_with_content_type(request: &mut Request, body: &str, _content_t
 
     request.discard_request_body();
     request.set_status(http::HTTPStatus::OK);
-    
+
     // Set content type (nginx will handle it based on add_header in config or auto-detection)
     // For now, we rely on nginx config to set Content-Type via add_header directive
+    request.add_header_out("Content-Type", content_type.content_type_header());
 
     let rc = request.send_header();
     if rc == Status::NGX_ERROR || rc > Status::NGX_OK || request.header_only() {
