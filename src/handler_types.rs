@@ -18,11 +18,13 @@ pub struct ValidConfigToken {
 
 impl ValidConfigToken {
     /// Try to create a token - returns None if config is invalid
-    pub fn new(config: &ModuleConfig) -> Option<Self> {
+    pub fn new(config: &ModuleConfig, doc_root: String, uri: String) -> Option<Self> {
         if config.db_path.is_empty() || config.query.is_empty() || config.template_path.is_empty() {
             return None;
         }
-        parsing::parse_config(config).map(|c| ValidConfigToken { config: c }).ok()
+        parsing::parse_config(config, doc_root, uri)
+            .map(|c| ValidConfigToken { config: c })
+            .ok()
     }
 
     pub fn get(&self) -> &ValidatedConfig {
@@ -34,22 +36,16 @@ impl ValidConfigToken {
 /// Returns Status directly - no Result needed, types prove correctness
 pub fn process_request(
     request: &mut ngx::http::Request,
-    doc_root: String,
-    uri: String,
-    config: ValidConfigToken,
+    validated_config: &ValidatedConfig,
 ) -> Status {
     logging::debug(
         request,
         "handler",
-        &format!("Processing request for {}", uri),
+        &format!("Processing request for {}", validated_config.uri),
     );
 
-    // Parse config into validated types
-    let validated_config = config.get();
-
     // Resolve template path (pure function - cannot fail)
-    let resolved_template =
-        domain::resolve_template_path(&doc_root, &uri, &validated_config.template_path);
+    let resolved_template = domain::resolve_template_path(&validated_config);
 
     logging::debug(
         request,
@@ -230,7 +226,7 @@ mod tests {
             query_params: vec![],
         };
 
-        let token = ValidConfigToken::new(&config);
+        let token = ValidConfigToken::new(&config, "".into(), "".into());
         assert!(token.is_some());
     }
 
@@ -243,7 +239,7 @@ mod tests {
             query_params: vec![],
         };
 
-        let token = ValidConfigToken::new(&config);
+        let token = ValidConfigToken::new(&config, "".into(), "".into());
         assert!(token.is_none());
     }
 
@@ -256,7 +252,7 @@ mod tests {
             query_params: vec![],
         };
 
-        let token = ValidConfigToken::new(&config);
+        let token = ValidConfigToken::new(&config, "".into(), "".into());
         assert!(token.is_none());
     }
 
@@ -269,7 +265,7 @@ mod tests {
             query_params: vec![],
         };
 
-        let token = ValidConfigToken::new(&config);
+        let token = ValidConfigToken::new(&config, "".into(), "".into());
         assert!(token.is_none());
     }
 }

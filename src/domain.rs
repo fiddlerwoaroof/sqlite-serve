@@ -12,6 +12,29 @@ pub struct ValidatedConfig {
     pub query: SqlQuery,
     pub template_path: TemplatePath,
     pub parameters: Vec<ParameterBinding>,
+    pub doc_root: String,
+    pub uri: String,
+}
+
+impl ValidatedConfig {
+    pub fn resolve_template_path(&self) -> ResolvedTemplate {
+        let full_path = format!(
+            "{}{}/{}",
+            self.doc_root,
+            self.uri,
+            self.template_path.as_str()
+        );
+        let directory = Path::new(&full_path)
+            .parent()
+            .and_then(|p| p.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        ResolvedTemplate {
+            full_path,
+            directory,
+        }
+    }
 }
 
 /// Template resolution result
@@ -32,22 +55,8 @@ impl ResolvedTemplate {
 }
 
 /// Resolve template path relative to document root and URI (pure function)
-pub fn resolve_template_path(
-    doc_root: &str,
-    uri: &str,
-    template: &TemplatePath,
-) -> ResolvedTemplate {
-    let full_path = format!("{}{}/{}", doc_root, uri, template.as_str());
-    let directory = Path::new(&full_path)
-        .parent()
-        .and_then(|p| p.to_str())
-        .unwrap_or("")
-        .to_string();
-
-    ResolvedTemplate {
-        full_path,
-        directory,
-    }
+pub fn resolve_template_path(config: &ValidatedConfig) -> ResolvedTemplate {
+    config.resolve_template_path()
 }
 
 /// Parameter resolution strategy (dependency injection)
@@ -168,7 +177,14 @@ mod tests {
     #[test]
     fn test_resolve_template_path() {
         let template = TemplatePath::parse("list.hbs").unwrap();
-        let resolved = resolve_template_path("server_root", "/books", &template);
+        let resolved = resolve_template_path(&ValidatedConfig {
+            db_path: DatabasePath::parse("asdf").expect("fail"),
+            query: SqlQuery::parse("SELECT whatever").expect("fail"),
+            template_path: template,
+            parameters: Vec::new(),
+            doc_root: "server_root".into(),
+            uri: "/books".into(),
+        });
 
         assert_eq!(resolved.full_path(), "server_root/books/list.hbs");
         assert_eq!(resolved.directory(), "server_root/books");
@@ -177,7 +193,14 @@ mod tests {
     #[test]
     fn test_resolve_template_path_with_trailing_slash() {
         let template = TemplatePath::parse("index.hbs").unwrap();
-        let resolved = resolve_template_path("public/", "/docs/", &template);
+        let resolved = resolve_template_path(&ValidatedConfig {
+            db_path: DatabasePath::parse("asdf").expect("fail"),
+            query: SqlQuery::parse("SELECT whatever").expect("fail"),
+            template_path: template,
+            parameters: Vec::new(),
+            doc_root: "public/".into(),
+            uri: "/docs/".into(),
+        });
 
         assert!(resolved.full_path().contains("public//docs/"));
     }
@@ -274,6 +297,8 @@ mod tests {
             query: SqlQuery::parse("SELECT * FROM books").unwrap(),
             template_path: TemplatePath::parse("list.hbs").unwrap(),
             parameters: vec![],
+            doc_root: "".into(),
+            uri: "".into(),
         };
 
         let resolved_template = ResolvedTemplate {

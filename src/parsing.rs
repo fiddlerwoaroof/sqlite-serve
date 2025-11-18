@@ -7,7 +7,11 @@ use crate::types::{
 };
 
 /// Parse raw configuration into validated domain configuration
-pub fn parse_config(config: &ModuleConfig) -> Result<ValidatedConfig, String> {
+pub fn parse_config(
+    config: &ModuleConfig,
+    doc_root: String,
+    uri: String,
+) -> Result<ValidatedConfig, String> {
     let db_path =
         DatabasePath::parse(&config.db_path).map_err(|e| format!("invalid db_path: {}", e))?;
 
@@ -23,6 +27,8 @@ pub fn parse_config(config: &ModuleConfig) -> Result<ValidatedConfig, String> {
         query,
         template_path,
         parameters,
+        doc_root,
+        uri,
     })
 }
 
@@ -78,7 +84,7 @@ mod tests {
             query_params: vec![],
         };
 
-        let validated = parse_config(&config).unwrap();
+        let validated = parse_config(&config, "".into(), "".into()).unwrap();
         assert_eq!(validated.db_path.as_str(), "test.db");
         assert!(validated.query.as_str().contains("SELECT"));
     }
@@ -92,7 +98,7 @@ mod tests {
             query_params: vec![],
         };
 
-        let result = parse_config(&config);
+        let result = parse_config(&config, "".into(), "".into());
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("SELECT"));
     }
@@ -106,7 +112,7 @@ mod tests {
             query_params: vec![],
         };
 
-        let result = parse_config(&config);
+        let result = parse_config(&config, "".into(), "".into());
         assert!(result.is_err());
         assert!(result.unwrap_err().contains(".hbs"));
     }
