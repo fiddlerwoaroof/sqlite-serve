@@ -12,67 +12,47 @@ use ngx::core::Status;
 use ngx::http::HttpModuleMainConf;
 
 /// Proof that we have valid configuration (Ghost of Departed Proofs)
-pub struct ValidConfigToken<'a> {
-    config: &'a ModuleConfig,
+pub struct ValidConfigToken {
+    config: ValidatedConfig,
 }
 
-impl<'a> ValidConfigToken<'a> {
+impl ValidConfigToken {
     /// Try to create a token - returns None if config is invalid
-    pub fn new(config: &'a ModuleConfig) -> Option<Self> {
+    pub fn new(config: &ModuleConfig) -> Option<Self> {
         if config.db_path.is_empty() || config.query.is_empty() || config.template_path.is_empty() {
             return None;
         }
-        Some(ValidConfigToken { config })
+        parsing::parse_config(config).map(|c| ValidConfigToken { config: c }).ok()
     }
 
-    pub fn get(&self) -> &ModuleConfig {
-        self.config
+    pub fn get(&self) -> &ValidatedConfig {
+        &self.config
     }
 }
 
 /// Process a request with guaranteed valid configuration
 /// Returns Status directly - no Result needed, types prove correctness
-pub fn process_request(request: &mut ngx::http::Request, config: ValidConfigToken) -> Status {
-    logging::log(
+pub fn process_request(
+    request: &mut ngx::http::Request,
+    doc_root: String,
+    uri: String,
+    config: ValidConfigToken,
+) -> Status {
+    logging::debug(
         request,
-        logging::LogLevel::Debug,
         "handler",
-        &format!(
-            "Processing request for {}",
-            request.unparsed_uri().to_str().unwrap_or("unknown")
-        ),
+        &format!("Processing request for {}", uri),
     );
 
     // Parse config into validated types
-    let validated_config = match parsing::parse_config(config.get()) {
-        Ok(c) => c,
-        Err(e) => {
-            logging::log_config_error(request, "configuration", "", &e);
-            return ngx::http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
-        }
-    };
-
-    // Get nginx paths
-    let (doc_root, uri) = match get_doc_root_and_uri(request) {
-        Ok(paths) => paths,
-        Err(e) => {
-            logging::log(
-                request,
-                logging::LogLevel::Error,
-                "nginx",
-                &format!("Path resolution failed: {}", e),
-            );
-            return ngx::http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
-        }
-    };
+    let validated_config = config.get();
 
     // Resolve template path (pure function - cannot fail)
     let resolved_template =
         domain::resolve_template_path(&doc_root, &uri, &validated_config.template_path);
 
-    logging::log(
+    logging::debug(
         request,
-        logging::LogLevel::Debug,
         "template",
         &format!("Resolved template: {}", resolved_template.full_path()),
     );
@@ -83,9 +63,8 @@ pub fn process_request(request: &mut ngx::http::Request, config: ValidConfigToke
         match domain::resolve_parameters(&validated_config.parameters, &var_resolver) {
             Ok(params) => {
                 if !params.is_empty() {
-                    logging::log(
+                    logging::debug(
                         request,
-                        logging::LogLevel::Debug,
                         "params",
                         &format!("Resolved {} parameters", params.len()),
                     );
@@ -210,7 +189,11 @@ fn execute_json(
                 request,
                 logging::LogLevel::Info,
                 "success",
-                &format!("Returned {} JSON results with {} params", results.len(), resolved_params.len()),
+                &format!(
+                    "Returned {} JSON results with {} params",
+                    results.len(),
+                    resolved_params.len()
+                ),
             );
             serde_json::to_string_pretty(&results).unwrap_or_else(|e| {
                 logging::log(
@@ -228,7 +211,8 @@ fn execute_json(
                 "error": "Query execution failed",
                 "details": e
             });
-            serde_json::to_string(&error_obj).unwrap_or_else(|_| r#"{"error":"serialization failed"}"#.to_string())
+            serde_json::to_string(&error_obj)
+                .unwrap_or_else(|_| r#"{"error":"serialization failed"}"#.to_string())
         }
     }
 }
