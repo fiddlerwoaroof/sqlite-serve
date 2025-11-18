@@ -173,7 +173,6 @@ pub enum ParameterBinding {
     },
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

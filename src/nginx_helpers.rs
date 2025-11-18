@@ -38,7 +38,11 @@ pub fn send_json_response(request: &mut Request, body: &str) -> Status {
 }
 
 /// Create and send nginx response buffer with specified content type
-fn send_response_with_content_type(request: &mut Request, body: &str, content_type: &ContentType) -> Status {
+fn send_response_with_content_type(
+    request: &mut Request,
+    body: &str,
+    content_type: &ContentType,
+) -> Status {
     // Create output buffer
     let mut buf = match request.pool().create_buffer_from_str(body) {
         Some(buf) => buf,

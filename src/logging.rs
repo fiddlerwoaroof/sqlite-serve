@@ -33,6 +33,10 @@ pub fn log(request: &mut Request, level: LogLevel, module: &str, message: &str) 
     }
 }
 
+pub fn debug(request: &mut Request, module: &str, message: &str) {
+    log(request, LogLevel::Debug, module, message);
+}
+
 /// Log configuration parsing error
 pub fn log_config_error(request: &mut Request, field: &str, value: &str, error: &str) {
     log(

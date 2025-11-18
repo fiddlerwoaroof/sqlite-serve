@@ -119,7 +119,7 @@ where
     pub fn new(query_executor: Q, template_loader: L) -> Self {
         RequestProcessor {
             query_executor,
-            template_loader
+            template_loader,
         }
     }
 
@@ -281,8 +281,7 @@ mod tests {
             directory: "templates".to_string(),
         };
 
-        let mut processor =
-            RequestProcessor::new(MockQueryExecutor, MockTemplateSystem);
+        let mut processor = RequestProcessor::new(MockQueryExecutor, MockTemplateSystem);
 
         let result = processor.process(&config, &resolved_template, &[], None);
 
