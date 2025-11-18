@@ -47,44 +47,35 @@ impl QueryExecutor for SqliteQueryExecutor {
 
 /// Adapter for Handlebars template operations (using raw pointer for interior mutability)
 #[derive(Clone)]
-pub struct HandlebarsAdapter {
-    registry: *mut Handlebars<'static>,
+pub struct HandlebarsAdapter<'a> {
+    registry: Handlebars<'a>,
 }
 
-impl HandlebarsAdapter {
-    /// Create adapter from mutable handlebars registry
-    ///
-    /// # Safety
-    /// Caller must ensure the registry outlives this adapter
-    pub unsafe fn new(registry: *mut Handlebars<'static>) -> Self {
-        HandlebarsAdapter { registry }
-    }
-}
-
-impl TemplateLoader for HandlebarsAdapter {
-    fn load_from_dir(&self, dir_path: &str) -> Result<usize, String> {
-        unsafe {
-            template::load_templates_from_dir(&mut *self.registry, dir_path)
-                .map_err(|e| e.to_string())
-        }
-    }
-
-    fn register_template(&self, name: &str, path: &str) -> Result<(), String> {
-        unsafe {
-            (*self.registry)
-                .register_template_file(name, path)
-                .map_err(|e| e.to_string())
+impl<'a> HandlebarsAdapter<'a> {
+    pub fn new() -> Self {
+        HandlebarsAdapter {
+            registry: Handlebars::new(),
         }
     }
 }
 
-impl TemplateRenderer for HandlebarsAdapter {
+impl TemplateLoader for HandlebarsAdapter<'_> {
+    fn load_from_dir(&mut self, dir_path: &str) -> Result<usize, String> {
+        template::load_templates_from_dir(&mut self.registry, dir_path).map_err(|e| e.to_string())
+    }
+
+    fn register_template(&mut self, name: &str, path: &str) -> Result<(), String> {
+        self.registry
+            .register_template_file(name, path)
+            .map_err(|e| e.to_string())
+    }
+}
+
+impl TemplateRenderer for HandlebarsAdapter<'_> {
     fn render(&self, template_name: &str, data: &Value) -> Result<String, String> {
-        unsafe {
-            (*self.registry)
-                .render(template_name, data)
-                .map_err(|e| e.to_string())
-        }
+        self.registry
+            .render(template_name, data)
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -135,9 +126,7 @@ mod tests {
         let mut file = fs::File::create(&template_path).unwrap();
         file.write_all(b"Hello {{name}}").unwrap();
 
-        let mut reg = Handlebars::new();
-        let reg_ptr: *mut Handlebars<'static> = unsafe { std::mem::transmute(&mut reg) };
-        let adapter = unsafe { HandlebarsAdapter::new(reg_ptr) };
+        let mut adapter = HandlebarsAdapter::new();
 
         adapter.register_template("test", &template_path).unwrap();
 

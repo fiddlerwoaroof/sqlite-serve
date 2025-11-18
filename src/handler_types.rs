@@ -126,11 +126,9 @@ fn execute_with_processor(
     resolved_params: &[(String, String)],
     request: &mut ngx::http::Request,
 ) -> String {
-    let mut reg = handlebars::Handlebars::new();
-    let reg_ptr: *mut handlebars::Handlebars<'static> = unsafe { std::mem::transmute(&mut reg) };
-    let hbs_adapter = unsafe { HandlebarsAdapter::new(reg_ptr) };
+    let reg = HandlebarsAdapter::new();
 
-    let processor = RequestProcessor::new(SqliteQueryExecutor, hbs_adapter);
+    let mut processor = RequestProcessor::new(SqliteQueryExecutor, reg);
 
     let main_conf = Module::main_conf(request).expect("main config is none");
     let global_dir = if !main_conf.global_templates_dir.is_empty() {
@@ -203,9 +201,9 @@ fn execute_json(
     request: &mut ngx::http::Request,
 ) -> String {
     use crate::domain::QueryExecutor;
-    
+
     let executor = SqliteQueryExecutor;
-    
+
     match executor.execute(&config.db_path, &config.query, resolved_params) {
         Ok(results) => {
             logging::log(

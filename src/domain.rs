@@ -96,8 +96,8 @@ pub trait QueryExecutor {
 
 /// Template loading strategy (dependency injection)
 pub trait TemplateLoader {
-    fn load_from_dir(&self, dir_path: &str) -> Result<usize, String>;
-    fn register_template(&self, name: &str, path: &str) -> Result<(), String>;
+    fn load_from_dir(&mut self, dir_path: &str) -> Result<usize, String>;
+    fn register_template(&mut self, name: &str, path: &str) -> Result<(), String>;
 }
 
 /// Template rendering strategy (dependency injection)
@@ -106,7 +106,7 @@ pub trait TemplateRenderer {
 }
 
 /// Pure business logic for request handling
-pub struct RequestProcessor<Q, L> {
+pub struct RequestProcessor<Q, L: TemplateLoader + TemplateRenderer> {
     query_executor: Q,
     template_loader: L,
 }
@@ -125,7 +125,7 @@ where
 
     /// Process a request (pure, testable business logic)
     pub fn process(
-        &self,
+        &mut self,
         config: &ValidatedConfig,
         resolved_template: &ResolvedTemplate,
         resolved_params: &[(String, String)],
@@ -211,10 +211,10 @@ mod tests {
 
     struct MockTemplateSystem;
     impl TemplateLoader for MockTemplateSystem {
-        fn load_from_dir(&self, _dir_path: &str) -> Result<usize, String> {
+        fn load_from_dir(&mut self, _dir_path: &str) -> Result<usize, String> {
             Ok(0)
         }
-        fn register_template(&self, _name: &str, _path: &str) -> Result<(), String> {
+        fn register_template(&mut self, _name: &str, _path: &str) -> Result<(), String> {
             Ok(())
         }
     }
@@ -281,7 +281,7 @@ mod tests {
             directory: "templates".to_string(),
         };
 
-        let processor =
+        let mut processor =
             RequestProcessor::new(MockQueryExecutor, MockTemplateSystem);
 
         let result = processor.process(&config, &resolved_template, &[], None);
