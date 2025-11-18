@@ -5,7 +5,7 @@ use crate::config::ModuleConfig;
 use crate::content_type::{ContentType, negotiate_content_type};
 use crate::domain::{RequestProcessor, ValidatedConfig};
 use crate::logging;
-use crate::nginx_helpers::{get_doc_root_and_uri, send_json_response, send_response};
+use crate::nginx_helpers::{send_json_response, send_response};
 use crate::parsing;
 use crate::{Module, domain};
 use ngx::core::Status;

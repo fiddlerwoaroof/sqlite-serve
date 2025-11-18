@@ -77,25 +77,6 @@ pub fn log_param_error(request: &mut Request, param: &str, error: &str) {
     );
 }
 
-/// Log successful request processing
-pub fn log_request_success(
-    request: &mut Request,
-    query: &str,
-    param_count: usize,
-    result_count: usize,
-    template: &str,
-) {
-    log(
-        request,
-        LogLevel::Info,
-        "request",
-        &format!(
-            "Processed: query='{}' params={} results={} template='{}'",
-            query, param_count, result_count, template
-        ),
-    );
-}
-
 /// Log template loading info
 pub fn log_template_loading(request: &mut Request, source: &str, count: usize, dir: &str) {
     log(

@@ -18,10 +18,6 @@ impl DatabasePath {
         Ok(DatabasePath(path.to_path_buf()))
     }
 
-    pub fn as_path(&self) -> &Path {
-        &self.0
-    }
-
     pub fn as_str(&self) -> &str {
         self.0.to_str().unwrap_or("")
     }
@@ -73,10 +69,6 @@ impl TemplatePath {
         }
 
         Ok(TemplatePath(path.to_path_buf()))
-    }
-
-    pub fn as_path(&self) -> &Path {
-        &self.0
     }
 
     pub fn as_str(&self) -> &str {
