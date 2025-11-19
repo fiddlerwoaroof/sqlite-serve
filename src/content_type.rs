@@ -19,46 +19,27 @@ impl ContentType {
 
 /// Determine response content type based on Accept header
 pub fn negotiate_content_type(request: &Request) -> ContentType {
-    let r: *const ngx::ffi::ngx_http_request_t = request.into();
+    // Use safe headers_in_iterator() method provided by ngx crate
+    for (key, value) in request.headers_in_iterator() {
+        if let Ok(key_str) = key.to_str() {
+            if key_str.eq_ignore_ascii_case("accept") {
+                if let Ok(value_str) = value.to_str() {
+                    let value_lower = value_str.to_lowercase();
 
-    // SAFETY: Required to access NGINX request headers through C FFI.
-    // r is a valid request pointer. NGINX guarantees headers_in structure is valid.
-    // We iterate through the headers linked list, checking for null before dereferencing.
-    unsafe {
-        let headers_in = &(*r).headers_in;
+                    // Check if JSON is preferred over HTML
+                    if value_lower.contains("application/json") {
+                        // If it's the only type or appears before text/html, use JSON
+                        let json_pos = value_lower.find("application/json");
+                        let html_pos = value_lower.find("text/html");
 
-        // Iterate through all headers to find Accept
-        let mut current = headers_in.headers.part.elts as *mut ngx::ffi::ngx_table_elt_t;
-        let nelts = headers_in.headers.part.nelts;
-
-        for _ in 0..nelts {
-            if current.is_null() {
-                break;
-            }
-
-            let header = &*current;
-            if let Ok(key) = header.key.to_str() {
-                if key.eq_ignore_ascii_case("accept") {
-                    if let Ok(value) = header.value.to_str() {
-                        let value_lower = value.to_lowercase();
-
-                        // Check if JSON is preferred over HTML
-                        if value_lower.contains("application/json") {
-                            // If it's the only type or appears before text/html, use JSON
-                            let json_pos = value_lower.find("application/json");
-                            let html_pos = value_lower.find("text/html");
-
-                            match (json_pos, html_pos) {
-                                (Some(_), None) => return ContentType::Json,
-                                (Some(j), Some(h)) if j < h => return ContentType::Json,
-                                _ => {}
-                            }
+                        match (json_pos, html_pos) {
+                            (Some(_), None) => return ContentType::Json,
+                            (Some(j), Some(h)) if j < h => return ContentType::Json,
+                            _ => {}
                         }
                     }
                 }
             }
-
-            current = current.add(1);
         }
     }
 

@@ -21,19 +21,9 @@ pub fn log(request: &mut Request, level: LogLevel, module: &str, message: &str) 
         LogLevel::Debug => 7, // NGX_LOG_DEBUG
     };
 
-    let r: *mut ngx::ffi::ngx_http_request_t = request.into();
-    // SAFETY: Required to access NGINX's logging system through C FFI.
-    // r is a valid request pointer. We check for null pointers before dereferencing.
-    // NGINX guarantees connection and log pointers are valid when non-null.
-    unsafe {
-        let connection = (*r).connection;
-        if !connection.is_null() {
-            let log = (*connection).log;
-            if !log.is_null() {
-                ngx_log_error!(log_level, log, "[sqlite-serve:{}] {}", module, message);
-            }
-        }
-    }
+    // Use safe request.log() method provided by ngx crate
+    let log = request.log();
+    ngx_log_error!(log_level, log, "[sqlite-serve:{}] {}", module, message);
 }
 
 pub fn debug(request: &mut Request, module: &str, message: &str) {

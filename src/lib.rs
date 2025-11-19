@@ -2,8 +2,14 @@
 //!
 //! # Safety and Unsafe Code
 //!
-//! This module contains `unsafe` code that is **required** for FFI (Foreign Function Interface)
-//! with NGINX's C API. All unsafe code in this codebase falls into these necessary categories:
+//! This module minimizes `unsafe` code by leveraging safe APIs from the ngx crate (v0.5.0).
+//! All remaining unsafe code is **required** for FFI with NGINX's C API.
+//!
+//! ## Safe APIs Used (No unsafe needed):
+//!
+//! - ✅ `request.headers_in_iterator()` - Safe HTTP header iteration (`content_type.rs`)
+//! - ✅ `request.log()` - Safe access to logging (`logging.rs`)
+//! - ✅ Type-safe trait with `&mut self` - Eliminates pointer casting (`adapters.rs`)
 //!
 //! ## Required Unsafe Code (Cannot be removed):
 //!
@@ -17,17 +23,10 @@
 //!    - Raw pointer dereferencing to access NGINX request structures
 //!    - Calls to NGINX C API functions (ngx_hash_key, ngx_http_get_variable)
 //!    - Required for reading nginx variables like $arg_id
+//!    - No safe API available in ngx crate yet
 //!
-//! 3. **NGINX Logging** (`logging.rs`)
-//!    - Raw pointer dereferencing to access NGINX log structures
-//!    - Required for structured logging through nginx's logging system
-//!
-//! 4. **HTTP Header Parsing** (`content_type.rs`)
-//!    - Raw pointer dereferencing to access NGINX header structures
-//!    - Required for content negotiation based on Accept headers
-//!
-//! All unsafe code has been audited and is necessary for interfacing with NGINX's C API.
-//! The rest of the codebase uses safe Rust with type-driven correctness guarantees.
+//! All unsafe code has been audited and documented with SAFETY comments.
+//! See UNSAFE_CODE_AUDIT.md for detailed analysis.
 
 mod adapters;
 mod config;
