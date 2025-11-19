@@ -70,6 +70,6 @@ echo "  ✓ Type-safe configuration (Parse, Don't Validate)"
 echo "  ✓ Dependency injection architecture"
 echo "  ✓ 103 unit tests"
 echo ""
-echo "To stop: ./ngx_src/nginx-1.28.0/objs/nginx -s stop -c conf/sqlite_serve.conf -p ."
+echo "To stop: $NGINX_BUILD_DIR/nginx -s stop -c conf/sqlite_serve.conf -p ."
 echo ""
 

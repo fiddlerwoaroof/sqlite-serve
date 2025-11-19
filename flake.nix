@@ -101,9 +101,11 @@
                 rustfmt
                 sqlite
                 zlib.dev
+                nginx
               ]
               ++ platformInputs;
 
+            NGINX_BUILD_DIR = "${nginx}/objs";
             LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
             BINDGEN_EXTRA_CLANG_ARGS = bindgenFlags;
             RUST_SRC_PATH = rustPlatform.rustLibSrc;
