@@ -432,4 +432,167 @@ mod tests {
         assert!(result.is_ok());
         assert!(result.unwrap().contains("Rendered"));
     }
+
+    // Additional edge case tests
+    #[test]
+    fn test_resolve_template_path_empty_uri() {
+        let template = TemplatePath::parse("index.hbs").unwrap();
+        let resolved = resolve_template_path(&ValidatedConfig {
+            db_path: DatabasePath::parse("test.db").unwrap(),
+            query: SqlQuery::parse("SELECT id FROM test").unwrap(),
+            template_path: template,
+            parameters: Vec::new(),
+            doc_root: "/var/www".into(),
+            uri: "".into(),
+        });
+
+        assert_eq!(resolved.full_path(), "/var/www/index.hbs");
+        assert_eq!(resolved.directory(), "/var/www");
+    }
+
+    #[test]
+    fn test_resolve_template_path_root_uri() {
+        let template = TemplatePath::parse("home.hbs").unwrap();
+        let resolved = resolve_template_path(&ValidatedConfig {
+            db_path: DatabasePath::parse("test.db").unwrap(),
+            query: SqlQuery::parse("SELECT id FROM test").unwrap(),
+            template_path: template,
+            parameters: Vec::new(),
+            doc_root: "/www".into(),
+            uri: "/".into(),
+        });
+
+        assert_eq!(resolved.full_path(), "/www//home.hbs");
+    }
+
+    #[test]
+    fn test_resolve_template_path_nested_uri() {
+        let template = TemplatePath::parse("view.hbs").unwrap();
+        let resolved = resolve_template_path(&ValidatedConfig {
+            db_path: DatabasePath::parse("test.db").unwrap(),
+            query: SqlQuery::parse("SELECT id FROM test").unwrap(),
+            template_path: template,
+            parameters: Vec::new(),
+            doc_root: "public".into(),
+            uri: "/api/v1/books".into(),
+        });
+
+        assert_eq!(resolved.full_path(), "public/api/v1/books/view.hbs");
+        assert_eq!(resolved.directory(), "public/api/v1/books");
+    }
+
+    #[test]
+    fn test_resolve_parameters_multiple_positional() {
+        let bindings = vec![
+            ParameterBinding::Positional {
+                variable: NginxVariable::parse("$arg_id").unwrap(),
+            },
+            ParameterBinding::Positional {
+                variable: NginxVariable::parse("$arg_genre").unwrap(),
+            },
+        ];
+
+        let mut resolver = MockVariableResolver;
+        let resolved = resolve_parameters(&bindings, &mut resolver).unwrap();
+
+        assert_eq!(resolved.len(), 2);
+        assert_eq!(resolved[0].1, "123");
+        assert_eq!(resolved[1].1, "Fiction");
+    }
+
+    #[test]
+    fn test_resolve_parameters_multiple_named() {
+        let bindings = vec![
+            ParameterBinding::Named {
+                name: ParamName::parse(":id").unwrap(),
+                variable: NginxVariable::parse("$arg_id").unwrap(),
+            },
+            ParameterBinding::Named {
+                name: ParamName::parse(":genre").unwrap(),
+                variable: NginxVariable::parse("$arg_genre").unwrap(),
+            },
+        ];
+
+        let mut resolver = MockVariableResolver;
+        let resolved = resolve_parameters(&bindings, &mut resolver).unwrap();
+
+        assert_eq!(resolved.len(), 2);
+        assert_eq!(resolved[0].0, ":id");
+        assert_eq!(resolved[0].1, "123");
+        assert_eq!(resolved[1].0, ":genre");
+        assert_eq!(resolved[1].1, "Fiction");
+    }
+
+    #[test]
+    fn test_resolve_parameters_mixed_types() {
+        let bindings = vec![
+            ParameterBinding::Named {
+                name: ParamName::parse(":id").unwrap(),
+                variable: NginxVariable::parse("$arg_id").unwrap(),
+            },
+            ParameterBinding::PositionalLiteral {
+                value: "constant".to_string(),
+            },
+            ParameterBinding::Positional {
+                variable: NginxVariable::parse("$arg_genre").unwrap(),
+            },
+        ];
+
+        let mut resolver = MockVariableResolver;
+        let resolved = resolve_parameters(&bindings, &mut resolver).unwrap();
+
+        assert_eq!(resolved.len(), 3);
+        assert_eq!(resolved[0].0, ":id");
+        assert_eq!(resolved[0].1, "123");
+        assert_eq!(resolved[1].1, "constant");
+        assert_eq!(resolved[2].1, "Fiction");
+    }
+
+    #[test]
+    fn test_resolve_parameters_named_literal() {
+        let bindings = vec![ParameterBinding::NamedLiteral {
+            name: ParamName::parse(":status").unwrap(),
+            value: "active".to_string(),
+        }];
+
+        let mut resolver = MockVariableResolver;
+        let resolved = resolve_parameters(&bindings, &mut resolver).unwrap();
+
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].0, ":status");
+        assert_eq!(resolved[0].1, "active");
+    }
+
+    #[test]
+    fn test_resolve_parameters_error_handling() {
+        let bindings = vec![ParameterBinding::Positional {
+            variable: NginxVariable::parse("$unknown_var").unwrap(),
+        }];
+
+        let mut resolver = MockVariableResolver;
+        let result = resolve_parameters(&bindings, &mut resolver);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("unknown variable"));
+    }
+
+    #[test]
+    fn test_resolve_parameters_empty() {
+        let bindings = vec![];
+        let mut resolver = MockVariableResolver;
+        let resolved = resolve_parameters(&bindings, &mut resolver).unwrap();
+
+        assert_eq!(resolved.len(), 0);
+    }
+
+    #[test]
+    fn test_resolved_template_accessors() {
+        let resolved = ResolvedTemplate {
+            full_path: "/var/www/templates/books/list.hbs".to_string(),
+            directory: "/var/www/templates/books".to_string(),
+        };
+
+        assert_eq!(resolved.full_path(), "/var/www/templates/books/list.hbs");
+        assert_eq!(resolved.directory(), "/var/www/templates/books");
+    }
 }
