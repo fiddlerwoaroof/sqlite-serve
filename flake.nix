@@ -31,7 +31,7 @@
         };
       in {
         packages.${system} = {
-          nginx-src = nginx-src;
+          nginx-src = nginx;
           nginx = pkgs.nginx;
         };
         defaultPackage = naersk-lib.buildPackage {
