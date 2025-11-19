@@ -38,6 +38,7 @@
           src = ./.;
           singleStep = false;
           dontStrip = true;
+          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
           buildInputs = [
             nginx
             pkgs.llvmPackages.libclang.lib
