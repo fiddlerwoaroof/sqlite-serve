@@ -1,10 +1,11 @@
 //! Adapter implementations for domain traits (imperative shell)
 
-use crate::domain::{QueryExecutor, VariableResolver};
+use crate::domain::{LogLevel, Logger, QueryExecutor, VariableResolver};
 use crate::query;
 use crate::types::{DatabasePath, SqlQuery};
 use crate::variable;
 use ngx::http::Request;
+use ngx::ngx_log_error;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -22,6 +23,34 @@ impl<'a> NginxVariableResolver<'a> {
 impl<'a> VariableResolver for NginxVariableResolver<'a> {
     fn resolve(&mut self, var_name: &str) -> Result<String, String> {
         variable::resolve_variable(self.request, var_name)
+    }
+}
+
+/// Adapter for nginx logging
+pub struct NginxLogger<'a> {
+    request: &'a mut Request,
+}
+
+impl<'a> NginxLogger<'a> {
+    pub fn new(request: &'a mut Request) -> Self {
+        NginxLogger { request }
+    }
+}
+
+impl<'a> Logger for NginxLogger<'a> {
+    fn log(&self, level: LogLevel, module: &str, message: &str) {
+        let log_level = match level {
+            LogLevel::Error => 3, // NGX_LOG_ERR
+            LogLevel::Warn => 4,  // NGX_LOG_WARN
+            LogLevel::Info => 6,  // NGX_LOG_INFO
+            LogLevel::Debug => 7, // NGX_LOG_DEBUG
+        };
+
+        // Use safe Request::log() method to get log pointer
+        let log = self.request.log();
+        if !log.is_null() {
+            ngx_log_error!(log_level, log, "[sqlite-serve:{}] {}", module, message);
+        }
     }
 }
 

@@ -5,7 +5,6 @@ mod config;
 mod content_type;
 mod domain;
 mod handler_types;
-mod logging;
 mod nginx_helpers;
 mod parsing;
 mod query;

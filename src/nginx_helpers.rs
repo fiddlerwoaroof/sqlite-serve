@@ -1,7 +1,6 @@
 //! NGINX-specific helper functions
 
 use crate::content_type::ContentType;
-use crate::logging;
 use ngx::core::Buffer;
 use ngx::ffi::ngx_chain_t;
 use ngx::http::{HttpModuleLocationConf, NgxHttpCoreModule, Request};
@@ -12,7 +11,7 @@ pub fn get_doc_root_and_uri(request: &mut Request) -> Result<(String, String), S
     let core_loc_conf = NgxHttpCoreModule::location_conf(request)
         .ok_or_else(|| "failed to get core location conf".to_string())?;
 
-    let doc_root = (*core_loc_conf)
+    let doc_root = core_loc_conf
         .root
         .to_str()
         .map_err(|e| format!("failed to decode root path: {}", e))?
@@ -71,16 +70,4 @@ fn send_response_with_content_type(
 
     request.output_filter(&mut out);
     Status::NGX_DONE
-}
-
-/// Log and return error status (deprecated - use logging module directly)
-#[allow(dead_code)]
-pub fn log_error(
-    request: &mut Request,
-    context: &str,
-    error: &str,
-    status: http::HTTPStatus,
-) -> Status {
-    logging::log(request, logging::LogLevel::Error, context, error);
-    status.into()
 }

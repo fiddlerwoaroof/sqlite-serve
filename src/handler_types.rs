@@ -1,10 +1,9 @@
 //! Handler-specific types that guarantee correctness
 
-use crate::adapters::{NginxVariableResolver, SqliteQueryExecutor};
+use crate::adapters::{NginxLogger, NginxVariableResolver, SqliteQueryExecutor};
 use crate::config::ModuleConfig;
 use crate::content_type::{ContentType, negotiate_content_type};
-use crate::domain::{RequestProcessor, ValidatedConfig};
-use crate::logging;
+use crate::domain::{Logger, RequestProcessor, ValidatedConfig};
 use crate::nginx_helpers::{get_doc_root_and_uri, send_json_response, send_response};
 use crate::parsing;
 use crate::template::HandlebarsAdapter;
@@ -20,7 +19,14 @@ impl ValidConfigToken {
     /// Try to create a token from nginx request - returns None if config is invalid or request data unavailable
     pub fn new(request: &mut ngx::http::Request) -> Option<Self> {
         // Extract doc_root and uri from the request
-        let (doc_root, uri) = get_doc_root_and_uri(request).ok()?;
+        let (doc_root, uri) = match get_doc_root_and_uri(request) {
+            Ok(res) => res,
+            Err(e) => {
+                let logger = NginxLogger::new(request);
+                logger.error("nginx", &format!("Path resolution failed: {}", e));
+                return None;
+            }
+        };
 
         // Get the module configuration from the request
         let config = Module::location_conf(request)?;
@@ -54,17 +60,16 @@ pub fn process_request(
     request: &mut ngx::http::Request,
     validated_config: &ValidatedConfig,
 ) -> Status {
-    logging::debug(
-        request,
+    // Log initial processing
+    NginxLogger::new(request).debug(
         "handler",
         &format!("Processing request for {}", validated_config.uri),
     );
 
     // Resolve template path (pure function - cannot fail)
-    let resolved_template = domain::resolve_template_path(&validated_config);
+    let resolved_template = domain::resolve_template_path(validated_config);
 
-    logging::debug(
-        request,
+    NginxLogger::new(request).debug(
         "template",
         &format!("Resolved template: {}", resolved_template.full_path()),
     );
@@ -75,16 +80,14 @@ pub fn process_request(
         match domain::resolve_parameters(&validated_config.parameters, &mut var_resolver) {
             Ok(params) => {
                 if !params.is_empty() {
-                    logging::debug(
-                        request,
-                        "params",
-                        &format!("Resolved {} parameters", params.len()),
-                    );
+                    NginxLogger::new(request)
+                        .debug("params", &format!("Resolved {} parameters", params.len()));
                 }
                 params
             }
             Err(e) => {
-                logging::log_param_error(request, "variable", &e);
+                NginxLogger::new(request)
+                    .error("params", &format!("Parameter resolution failed: {}", e));
                 return ngx::http::HTTPStatus::BAD_REQUEST.into();
             }
         };
@@ -95,12 +98,12 @@ pub fn process_request(
     // Execute query and format response
     match content_type {
         ContentType::Json => {
-            let json = execute_json(&validated_config, &resolved_params, request);
+            let json = execute_json(validated_config, &resolved_params, request);
             send_json_response(request, &json)
         }
         ContentType::Html => {
             let html = execute_with_processor(
-                &validated_config,
+                validated_config,
                 &resolved_template,
                 &resolved_params,
                 request,
@@ -119,51 +122,26 @@ fn execute_with_processor(
 ) -> String {
     let reg = HandlebarsAdapter::new();
 
-    let mut processor = RequestProcessor::new(SqliteQueryExecutor, reg);
-
+    // Get global template directory first (before creating logger)
     let main_conf = Module::main_conf(request).expect("main config is none");
     let global_dir = if !main_conf.global_templates_dir.is_empty() {
-        logging::log_template_loading(request, "global", 0, &main_conf.global_templates_dir);
         Some(main_conf.global_templates_dir.as_str())
     } else {
         None
     };
 
+    // Now create logger and processor
+    let logger = NginxLogger::new(request);
+    let mut processor = RequestProcessor::new(SqliteQueryExecutor, reg, logger);
+
     // Process through functional core
     match processor.process(config, resolved_template, resolved_params, global_dir) {
         Ok(html) => {
-            // Count results for logging (parse HTML or trust it worked)
-            logging::log(
-                request,
-                logging::LogLevel::Info,
-                "success",
-                &format!(
-                    "Rendered {} with {} params",
-                    resolved_template
-                        .full_path()
-                        .split('/')
-                        .last()
-                        .unwrap_or("template"),
-                    resolved_params.len()
-                ),
-            );
+            // Success is already logged in the processor
             html
         }
         Err(e) => {
-            // Log detailed error information
-            if e.contains("query") {
-                logging::log_query_error(request, config.query.as_str(), &e);
-            } else if e.contains("template") {
-                logging::log_template_error(request, resolved_template.full_path(), &e);
-            } else {
-                logging::log(
-                    request,
-                    logging::LogLevel::Error,
-                    "processing",
-                    &format!("Request processing failed: {}", e),
-                );
-            }
-
+            // Errors are already logged in the processor
             // Return user-friendly error page
             format!(
                 r#"<!DOCTYPE html>
@@ -193,13 +171,16 @@ fn execute_json(
 ) -> String {
     use crate::domain::QueryExecutor;
 
+    NginxLogger::new(request).debug(
+        "query",
+        &format!("Executing query for JSON: {}", config.query.as_str()),
+    );
+
     let executor = SqliteQueryExecutor;
 
     match executor.execute(&config.db_path, &config.query, resolved_params) {
         Ok(results) => {
-            logging::log(
-                request,
-                logging::LogLevel::Info,
+            NginxLogger::new(request).info(
                 "success",
                 &format!(
                     "Returned {} JSON results with {} params",
@@ -208,17 +189,16 @@ fn execute_json(
                 ),
             );
             serde_json::to_string_pretty(&results).unwrap_or_else(|e| {
-                logging::log(
-                    request,
-                    logging::LogLevel::Error,
-                    "json",
-                    &format!("JSON serialization failed: {}", e),
-                );
+                NginxLogger::new(request)
+                    .error("json", &format!("JSON serialization failed: {}", e));
                 "[]".to_string()
             })
         }
         Err(e) => {
-            logging::log_query_error(request, config.query.as_str(), &e);
+            NginxLogger::new(request).error(
+                "query",
+                &format!("Query failed: {} - Error: {}", config.query.as_str(), e),
+            );
             let error_obj = serde_json::json!({
                 "error": "Query execution failed",
                 "details": e
