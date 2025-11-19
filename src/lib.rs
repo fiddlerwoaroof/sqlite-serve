@@ -15,7 +15,6 @@ mod variable;
 
 use config::{MainConfig, ModuleConfig};
 use handler_types::{ValidConfigToken, process_request};
-use nginx_helpers::get_doc_root_and_uri;
 use ngx::ffi::{
     NGX_CONF_TAKE1, NGX_CONF_TAKE2, NGX_HTTP_LOC_CONF, NGX_HTTP_LOC_CONF_OFFSET,
     NGX_HTTP_MAIN_CONF, NGX_HTTP_MODULE, NGX_RS_MODULE_SIGNATURE, nginx_version, ngx_command_t,
@@ -250,23 +249,9 @@ extern "C" fn ngx_http_howto_commands_add_param(
 
 // HTTP request handler - correctness guaranteed by types (Ghost of Departed Proofs)
 http_request_handler!(howto_access_handler, |request: &mut http::Request| {
-    let (doc_root, uri) = match get_doc_root_and_uri(request) {
-        Ok(res) => res,
-        Err(e) => {
-            logging::log(
-                request,
-                logging::LogLevel::Error,
-                "nginx",
-                &format!("Path resolution failed: {}", e),
-            );
-            return ngx::http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
-        }
-    };
-
-    let config = Module::location_conf(request).expect("module config is none");
-
     // Type-safe gate: only proceed if we have proof of valid config
-    match ValidConfigToken::new(config, doc_root, uri) {
+    // ValidConfigToken::new handles extraction of all needed data from request
+    match ValidConfigToken::new(request) {
         Some(valid_config) => process_request(request, valid_config.get()),
         None => Status::NGX_OK, // Not configured - skip silently
     }

@@ -5,23 +5,39 @@ use crate::config::ModuleConfig;
 use crate::content_type::{ContentType, negotiate_content_type};
 use crate::domain::{RequestProcessor, ValidatedConfig};
 use crate::logging;
-use crate::nginx_helpers::{send_json_response, send_response};
+use crate::nginx_helpers::{get_doc_root_and_uri, send_json_response, send_response};
 use crate::parsing;
 use crate::template::HandlebarsAdapter;
 use crate::{Module, domain};
 use ngx::core::Status;
-use ngx::http::HttpModuleMainConf;
+use ngx::http::{HttpModuleLocationConf, HttpModuleMainConf};
 
 pub struct ValidConfigToken {
     config: ValidatedConfig,
 }
 
 impl ValidConfigToken {
-    /// Try to create a token - returns None if config is invalid
-    pub fn new(config: &ModuleConfig, doc_root: String, uri: String) -> Option<Self> {
+    /// Try to create a token from nginx request - returns None if config is invalid or request data unavailable
+    pub fn new(request: &mut ngx::http::Request) -> Option<Self> {
+        // Extract doc_root and uri from the request
+        let (doc_root, uri) = get_doc_root_and_uri(request).ok()?;
+
+        // Get the module configuration from the request
+        let config = Module::location_conf(request)?;
+
+        // Delegate to from_config for actual validation
+        Self::from_config(config, doc_root, uri)
+    }
+
+    /// Create a token from config and context (testable)
+    /// This is the core validation logic, separated for testing
+    fn from_config(config: &ModuleConfig, doc_root: String, uri: String) -> Option<Self> {
+        // Validate basic config fields
         if config.db_path.is_empty() || config.query.is_empty() || config.template_path.is_empty() {
             return None;
         }
+
+        // Parse and validate the configuration
         parsing::parse_config(config, doc_root, uri)
             .map(|c| ValidConfigToken { config: c })
             .ok()
@@ -226,7 +242,7 @@ mod tests {
             query_params: vec![],
         };
 
-        let token = ValidConfigToken::new(&config, "".into(), "".into());
+        let token = ValidConfigToken::from_config(&config, "".into(), "".into());
         assert!(token.is_some());
     }
 
@@ -239,7 +255,7 @@ mod tests {
             query_params: vec![],
         };
 
-        let token = ValidConfigToken::new(&config, "".into(), "".into());
+        let token = ValidConfigToken::from_config(&config, "".into(), "".into());
         assert!(token.is_none());
     }
 
@@ -252,7 +268,7 @@ mod tests {
             query_params: vec![],
         };
 
-        let token = ValidConfigToken::new(&config, "".into(), "".into());
+        let token = ValidConfigToken::from_config(&config, "".into(), "".into());
         assert!(token.is_none());
     }
 
@@ -265,7 +281,7 @@ mod tests {
             query_params: vec![],
         };
 
-        let token = ValidConfigToken::new(&config, "".into(), "".into());
+        let token = ValidConfigToken::from_config(&config, "".into(), "".into());
         assert!(token.is_none());
     }
 }
