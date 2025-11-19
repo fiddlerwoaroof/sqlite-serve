@@ -11,7 +11,7 @@ pub fn get_doc_root_and_uri(request: &mut Request) -> Result<(String, String), S
     let core_loc_conf = NgxHttpCoreModule::location_conf(request)
         .ok_or_else(|| "failed to get core location conf".to_string())?;
 
-    let doc_root = (*core_loc_conf)
+    let doc_root = core_loc_conf
         .root
         .to_str()
         .map_err(|e| format!("failed to decode root path: {}", e))?

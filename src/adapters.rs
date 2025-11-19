@@ -1,6 +1,6 @@
 //! Adapter implementations for domain traits (imperative shell)
 
-use crate::domain::{Logger, LogLevel, QueryExecutor, VariableResolver};
+use crate::domain::{LogLevel, Logger, QueryExecutor, VariableResolver};
 use crate::query;
 use crate::types::{DatabasePath, SqlQuery};
 use crate::variable;

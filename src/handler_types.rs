@@ -66,7 +66,7 @@ pub fn process_request(
     );
 
     // Resolve template path (pure function - cannot fail)
-    let resolved_template = domain::resolve_template_path(&validated_config);
+    let resolved_template = domain::resolve_template_path(validated_config);
 
     NginxLogger::new(request).debug(
         "template",
@@ -79,15 +79,14 @@ pub fn process_request(
         match domain::resolve_parameters(&validated_config.parameters, &mut var_resolver) {
             Ok(params) => {
                 if !params.is_empty() {
-                    NginxLogger::new(request).debug(
-                        "params",
-                        &format!("Resolved {} parameters", params.len()),
-                    );
+                    NginxLogger::new(request)
+                        .debug("params", &format!("Resolved {} parameters", params.len()));
                 }
                 params
             }
             Err(e) => {
-                NginxLogger::new(request).error("params", &format!("Parameter resolution failed: {}", e));
+                NginxLogger::new(request)
+                    .error("params", &format!("Parameter resolution failed: {}", e));
                 return ngx::http::HTTPStatus::BAD_REQUEST.into();
             }
         };
@@ -98,12 +97,12 @@ pub fn process_request(
     // Execute query and format response
     match content_type {
         ContentType::Json => {
-            let json = execute_json(&validated_config, &resolved_params, request);
+            let json = execute_json(validated_config, &resolved_params, request);
             send_json_response(request, &json)
         }
         ContentType::Html => {
             let html = execute_with_processor(
-                &validated_config,
+                validated_config,
                 &resolved_template,
                 &resolved_params,
                 request,
@@ -171,7 +170,10 @@ fn execute_json(
 ) -> String {
     use crate::domain::QueryExecutor;
 
-    NginxLogger::new(request).debug("query", &format!("Executing query for JSON: {}", config.query.as_str()));
+    NginxLogger::new(request).debug(
+        "query",
+        &format!("Executing query for JSON: {}", config.query.as_str()),
+    );
 
     let executor = SqliteQueryExecutor;
 
@@ -186,12 +188,16 @@ fn execute_json(
                 ),
             );
             serde_json::to_string_pretty(&results).unwrap_or_else(|e| {
-                NginxLogger::new(request).error("json", &format!("JSON serialization failed: {}", e));
+                NginxLogger::new(request)
+                    .error("json", &format!("JSON serialization failed: {}", e));
                 "[]".to_string()
             })
         }
         Err(e) => {
-            NginxLogger::new(request).error("query", &format!("Query failed: {} - Error: {}", config.query.as_str(), e));
+            NginxLogger::new(request).error(
+                "query",
+                &format!("Query failed: {} - Error: {}", config.query.as_str(), e),
+            );
             let error_obj = serde_json::json!({
                 "error": "Query execution failed",
                 "details": e

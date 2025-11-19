@@ -192,18 +192,20 @@ where
             .query_executor
             .execute(&config.db_path, &config.query, resolved_params)
             .map_err(|e| {
-                self.logger.error("query", &format!("Query execution failed: {}", e));
+                self.logger
+                    .error("query", &format!("Query execution failed: {}", e));
                 format!("query execution failed: {}", e)
             })?;
 
-        self.logger.debug(
-            "query",
-            &format!("Query returned {} rows", results.len()),
-        );
+        self.logger
+            .debug("query", &format!("Query returned {} rows", results.len()));
 
         // Load global templates if provided
         if let Some(dir) = global_template_dir {
-            self.logger.debug("templates", &format!("Loading global templates from: {}", dir));
+            self.logger.debug(
+                "templates",
+                &format!("Loading global templates from: {}", dir),
+            );
             match self.template_loader.load_from_dir(dir) {
                 Ok(count) => {
                     self.logger.info(
@@ -223,14 +225,18 @@ where
         // Load local templates
         self.logger.debug(
             "templates",
-            &format!("Loading local templates from: {}", resolved_template.directory()),
+            &format!(
+                "Loading local templates from: {}",
+                resolved_template.directory()
+            ),
         );
-        match self.template_loader.load_from_dir(resolved_template.directory()) {
+        match self
+            .template_loader
+            .load_from_dir(resolved_template.directory())
+        {
             Ok(count) => {
-                self.logger.debug(
-                    "templates",
-                    &format!("Loaded {} local template(s)", count),
-                );
+                self.logger
+                    .debug("templates", &format!("Loaded {} local template(s)", count));
             }
             Err(e) => {
                 self.logger.warn(
@@ -243,27 +249,34 @@ where
         // Register main template
         self.logger.debug(
             "templates",
-            &format!("Registering main template: {}", resolved_template.full_path()),
+            &format!(
+                "Registering main template: {}",
+                resolved_template.full_path()
+            ),
         );
         self.template_loader
             .register_template("template", resolved_template.full_path())
             .map_err(|e| {
                 self.logger.error(
                     "template",
-                    &format!("Failed to register template '{}': {}", resolved_template.full_path(), e),
+                    &format!(
+                        "Failed to register template '{}': {}",
+                        resolved_template.full_path(),
+                        e
+                    ),
                 );
                 format!("failed to register template: {}", e)
             })?;
 
         // Render
-        self.logger.debug("render", "Rendering template with query results");
+        self.logger
+            .debug("render", "Rendering template with query results");
         let data = serde_json::json!({"results": results});
-        self.template_loader
-            .render("template", &data)
-            .map_err(|e| {
-                self.logger.error("render", &format!("Template rendering failed: {}", e));
-                format!("rendering failed: {}", e)
-            })
+        self.template_loader.render("template", &data).map_err(|e| {
+            self.logger
+                .error("render", &format!("Template rendering failed: {}", e));
+            format!("rendering failed: {}", e)
+        })
     }
 }
 
@@ -411,7 +424,8 @@ mod tests {
             directory: "templates".to_string(),
         };
 
-        let mut processor = RequestProcessor::new(MockQueryExecutor, MockTemplateSystem, MockLogger);
+        let mut processor =
+            RequestProcessor::new(MockQueryExecutor, MockTemplateSystem, MockLogger);
 
         let result = processor.process(&config, &resolved_template, &[], None);
 
