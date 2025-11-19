@@ -239,9 +239,15 @@ mod tests {
         let bindings = parse_parameter_bindings(&params).unwrap();
 
         assert_eq!(bindings.len(), 3);
-        assert!(matches!(bindings[0], ParameterBinding::PositionalLiteral { .. }));
+        assert!(matches!(
+            bindings[0],
+            ParameterBinding::PositionalLiteral { .. }
+        ));
         assert!(matches!(bindings[1], ParameterBinding::NamedLiteral { .. }));
-        assert!(matches!(bindings[2], ParameterBinding::PositionalLiteral { .. }));
+        assert!(matches!(
+            bindings[2],
+            ParameterBinding::PositionalLiteral { .. }
+        ));
     }
 
     #[test]
