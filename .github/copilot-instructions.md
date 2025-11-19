@@ -17,6 +17,7 @@ sqlite-serve is a dynamic NGINX module written in Rust that integrates SQLite da
 
 - Rust 2024 edition
 - NGINX source must be available (set via `NGINX_SOURCE_DIR` or `NGINX_BUILD_DIR` environment variables)
+  - Alternative: Use the `vendored` feature in ngx dependency to auto-download NGINX
 - direnv/Nix environment for proper dependency resolution
 
 ### Avoid Common Pitfalls
@@ -371,7 +372,13 @@ location = /search {
 ### Build Issues
 
 **Problem**: `nginx-sys` build fails with "feature is disabled"
-**Solution**: Ensure `NGINX_SOURCE_DIR` or `NGINX_BUILD_DIR` is set, or use the nix/direnv environment
+**Solution**: 
+- Ensure `NGINX_SOURCE_DIR` or `NGINX_BUILD_DIR` is set, or use the nix/direnv environment
+- Alternative: Temporarily enable the `vendored` feature in the ngx dependency in Cargo.toml:
+  ```toml
+  ngx = { version = "0.5.0", features = ["vendored"] }
+  ```
+  This will download and build NGINX automatically during compilation.
 
 **Problem**: `direnv: command not found`
 **Solution**: Install direnv and nix, then run `direnv allow` in the project directory
