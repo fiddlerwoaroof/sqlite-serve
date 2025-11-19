@@ -1,11 +1,9 @@
 //! Adapter implementations for domain traits (imperative shell)
 
-use crate::domain::{QueryExecutor, TemplateLoader, TemplateRenderer, VariableResolver};
+use crate::domain::{QueryExecutor, VariableResolver};
 use crate::query;
-use crate::template;
 use crate::types::{DatabasePath, SqlQuery};
 use crate::variable;
-use handlebars::Handlebars;
 use ngx::http::Request;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -45,40 +43,6 @@ impl QueryExecutor for SqliteQueryExecutor {
     }
 }
 
-/// Adapter for Handlebars template operations (using raw pointer for interior mutability)
-#[derive(Clone)]
-pub struct HandlebarsAdapter<'a> {
-    registry: Handlebars<'a>,
-}
-
-impl<'a> HandlebarsAdapter<'a> {
-    pub fn new() -> Self {
-        HandlebarsAdapter {
-            registry: Handlebars::new(),
-        }
-    }
-}
-
-impl TemplateLoader for HandlebarsAdapter<'_> {
-    fn load_from_dir(&mut self, dir_path: &str) -> Result<usize, String> {
-        template::load_templates_from_dir(&mut self.registry, dir_path).map_err(|e| e.to_string())
-    }
-
-    fn register_template(&mut self, name: &str, path: &str) -> Result<(), String> {
-        self.registry
-            .register_template_file(name, path)
-            .map_err(|e| e.to_string())
-    }
-}
-
-impl TemplateRenderer for HandlebarsAdapter<'_> {
-    fn render(&self, template_name: &str, data: &Value) -> Result<String, String> {
-        self.registry
-            .render(template_name, data)
-            .map_err(|e| e.to_string())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,30 +75,5 @@ mod tests {
         );
 
         let _ = fs::remove_file(temp_path);
-    }
-
-    #[test]
-    fn test_handlebars_adapter() {
-        use std::fs;
-        use std::io::Write;
-
-        let temp_dir = "/tmp/test_adapter_hbs";
-        let _ = fs::remove_dir_all(temp_dir);
-        fs::create_dir_all(temp_dir).unwrap();
-
-        let template_path = format!("{}/test.hbs", temp_dir);
-        let mut file = fs::File::create(&template_path).unwrap();
-        file.write_all(b"Hello {{name}}").unwrap();
-
-        let mut adapter = HandlebarsAdapter::new();
-
-        adapter.register_template("test", &template_path).unwrap();
-
-        let data = serde_json::json!({"name": "World"});
-        let rendered = adapter.render("test", &data).unwrap();
-
-        assert_eq!(rendered, "Hello World");
-
-        let _ = fs::remove_dir_all(temp_dir);
     }
 }

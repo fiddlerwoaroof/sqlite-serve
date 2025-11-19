@@ -1,13 +1,16 @@
 //! Template loading and management
 
 use handlebars::Handlebars;
-use std::path::Path;
+use serde_json::Value;
+use std::{ffi::OsStr, path::Path};
+
+use crate::domain::{TemplateLoader, TemplateRenderer};
 
 /// Load all .hbs templates from a directory into the Handlebars registry
 ///
 /// Each template is registered by its filename (without .hbs extension).
 /// Returns the number of templates successfully loaded.
-pub fn load_templates_from_dir(reg: &mut Handlebars, dir_path: &str) -> std::io::Result<usize> {
+fn load_templates_from_dir(reg: &mut Handlebars, dir_path: &str) -> std::io::Result<usize> {
     use std::fs;
 
     let dir = Path::new(dir_path);
@@ -17,14 +20,14 @@ pub fn load_templates_from_dir(reg: &mut Handlebars, dir_path: &str) -> std::io:
 
     let mut count = 0;
     for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
+        let path = entry?.path();
 
-        if path.is_file() {
-            if let Some(ext) = path.extension() {
-                if ext == "hbs" {
-                    if let Some(stem) = path.file_stem() {
-                        if let Some(name) = stem.to_str() {
+        let extension_matches = path.extension().unwrap_or_default() == OsStr::new("hbs");
+        if !path.is_file() || !extension_matches {
+            continue;
+        }
+
+        if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
                             if let Err(e) = reg.register_template_file(name, &path) {
                                 eprintln!("Failed to register template {}: {}", path.display(), e);
                             } else {
@@ -32,12 +35,41 @@ pub fn load_templates_from_dir(reg: &mut Handlebars, dir_path: &str) -> std::io:
                             }
                         }
                     }
-                }
-            }
-        }
-    }
 
     Ok(count)
+}
+
+#[derive(Clone)]
+pub struct HandlebarsAdapter {
+    registry: Handlebars<'static>,
+}
+
+impl HandlebarsAdapter {
+    pub fn new() -> Self {
+        HandlebarsAdapter {
+            registry: Handlebars::new(),
+        }
+    }
+}
+
+impl TemplateLoader for HandlebarsAdapter {
+    fn load_from_dir(&mut self, dir_path: &str) -> Result<usize, String> {
+        load_templates_from_dir(&mut self.registry, dir_path).map_err(|e| e.to_string())
+    }
+
+    fn register_template(&mut self, name: &str, path: &str) -> Result<(), String> {
+        self.registry
+            .register_template_file(name, path)
+            .map_err(|e| e.to_string())
+    }
+}
+
+impl TemplateRenderer for HandlebarsAdapter {
+    fn render(&self, template_name: &str, data: &Value) -> Result<String, String> {
+        self.registry
+            .render(template_name, data)
+            .map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(test)]
@@ -153,6 +185,31 @@ mod tests {
 
         let rendered2 = reg.render("test", &serde_json::json!({})).unwrap();
         assert_eq!(rendered2, "Updated");
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn test_handlebars_adapter() {
+        use std::fs;
+        use std::io::Write;
+
+        let temp_dir = "/tmp/test_adapter_hbs";
+        let _ = fs::remove_dir_all(temp_dir);
+        fs::create_dir_all(temp_dir).unwrap();
+
+        let template_path = format!("{}/test.hbs", temp_dir);
+        let mut file = fs::File::create(&template_path).unwrap();
+        file.write_all(b"Hello {{name}}").unwrap();
+
+        let mut adapter = HandlebarsAdapter::new();
+
+        adapter.register_template("test", &template_path).unwrap();
+
+        let data = serde_json::json!({"name": "World"});
+        let rendered = adapter.render("test", &data).unwrap();
+
+        assert_eq!(rendered, "Hello World");
 
         let _ = fs::remove_dir_all(temp_dir);
     }
