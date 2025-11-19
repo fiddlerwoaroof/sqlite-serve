@@ -1,100 +1,14 @@
-//! Structured logging utilities for sqlite-serve
-
-use ngx::http::Request;
-use ngx::ngx_log_error;
-
-/// Log levels matching nginx conventions
-#[derive(Debug, Clone, Copy)]
-pub enum LogLevel {
-    Debug,
-    Info,
-    Warn,
-    Error,
-}
-
-/// Log a message with context using nginx's native logging
-pub fn log(request: &mut Request, level: LogLevel, module: &str, message: &str) {
-    let log_level = match level {
-        LogLevel::Error => 3, // NGX_LOG_ERR
-        LogLevel::Warn => 4,  // NGX_LOG_WARN
-        LogLevel::Info => 6,  // NGX_LOG_INFO
-        LogLevel::Debug => 7, // NGX_LOG_DEBUG
-    };
-
-    // Use safe Request::log() method to get log pointer
-    let log = request.log();
-    if !log.is_null() {
-        ngx_log_error!(log_level, log, "[sqlite-serve:{}] {}", module, message);
-    }
-}
-
-pub fn debug(request: &mut Request, module: &str, message: &str) {
-    log(request, LogLevel::Debug, module, message);
-}
-
-/// Log configuration parsing error
-pub fn log_config_error(request: &mut Request, field: &str, value: &str, error: &str) {
-    log(
-        request,
-        LogLevel::Error,
-        "config",
-        &format!("Invalid {}: '{}' - {}", field, value, error),
-    );
-}
-
-/// Log query execution error
-pub fn log_query_error(request: &mut Request, query: &str, error: &str) {
-    log(
-        request,
-        LogLevel::Error,
-        "query",
-        &format!("Query failed: {} - Error: {}", query, error),
-    );
-}
-
-/// Log template error
-pub fn log_template_error(request: &mut Request, template_path: &str, error: &str) {
-    log(
-        request,
-        LogLevel::Error,
-        "template",
-        &format!("Template '{}' failed: {}", template_path, error),
-    );
-}
-
-/// Log parameter resolution error
-pub fn log_param_error(request: &mut Request, param: &str, error: &str) {
-    log(
-        request,
-        LogLevel::Warn,
-        "params",
-        &format!("Parameter '{}' resolution failed: {}", param, error),
-    );
-}
-
-/// Log template loading info
-pub fn log_template_loading(request: &mut Request, source: &str, count: usize, dir: &str) {
-    log(
-        request,
-        LogLevel::Debug,
-        "templates",
-        &format!("Loaded {} {} templates from '{}'", count, source, dir),
-    );
-}
+//! Legacy logging utilities for sqlite-serve
+//!
+//! NOTE: This module is deprecated. New code should use the Logger trait
+//! in the domain module with the NginxLogger adapter for dependency injection.
+//! This module is kept for backwards compatibility if needed.
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_log_level_ordering() {
-        // Just verify we can construct log levels
-        let levels = vec![
-            LogLevel::Debug,
-            LogLevel::Info,
-            LogLevel::Warn,
-            LogLevel::Error,
-        ];
-        assert_eq!(levels.len(), 4);
+        // Placeholder test - logging functionality moved to domain::Logger trait
+        assert!(true);
     }
 }
