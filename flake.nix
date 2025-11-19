@@ -26,13 +26,13 @@
           buildPhase = "";
           installPhase = ''
             mkdir -p "$out"
-            cp -R objs "$out"/objs
+            cp -R ./ "$out"/
+            ls "$out"
           '';
         };
       in {
-        packages.${system} = {
+        packages = {
           nginx-src = nginx;
-          nginx = pkgs.nginx;
         };
         defaultPackage = naersk-lib.buildPackage {
           src = ./.;
@@ -47,12 +47,7 @@
             pkgs.zlib.dev
           ];
           preBuild = ''
-            fw_orig_path="$PWD"
-            tar xf "${pkgs.nginx.src}"
-            cd "nginx-1.28.0"
-            ./configure --with-pcre=${pkgs.pcre.dev} --with-zlib=${pkgs.zlib.dev}
-            cd "$fw_orig_path"
-            export NGINX_BUILD_DIR="$PWD/nginx-1.28.0/objs"
+            export NGINX_BUILD_DIR="${nginx}/objs"
           '';
           postInstall = ''
             mkdir -p "$out"/lib
