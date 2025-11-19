@@ -5,6 +5,41 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
 
+/// Log levels for structured logging
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLevel {
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+/// Logger trait for dependency injection (enables logging without Request)
+pub trait Logger {
+    /// Log a message with context
+    fn log(&mut self, level: LogLevel, module: &str, message: &str);
+
+    /// Convenience method for debug logging
+    fn debug(&mut self, module: &str, message: &str) {
+        self.log(LogLevel::Debug, module, message);
+    }
+
+    /// Convenience method for info logging
+    fn info(&mut self, module: &str, message: &str) {
+        self.log(LogLevel::Info, module, message);
+    }
+
+    /// Convenience method for warn logging
+    fn warn(&mut self, module: &str, message: &str) {
+        self.log(LogLevel::Warn, module, message);
+    }
+
+    /// Convenience method for error logging
+    fn error(&mut self, module: &str, message: &str) {
+        self.log(LogLevel::Error, module, message);
+    }
+}
+
 /// Configuration for a location (validated at parse time)
 #[derive(Debug, Clone)]
 pub struct ValidatedConfig {
@@ -115,20 +150,23 @@ pub trait TemplateRenderer {
 }
 
 /// Pure business logic for request handling
-pub struct RequestProcessor<Q, L: TemplateLoader + TemplateRenderer> {
+pub struct RequestProcessor<Q, L: TemplateLoader + TemplateRenderer, Log: Logger> {
     query_executor: Q,
     template_loader: L,
+    logger: Log,
 }
 
-impl<Q, L> RequestProcessor<Q, L>
+impl<Q, L, Log> RequestProcessor<Q, L, Log>
 where
     Q: QueryExecutor,
     L: TemplateLoader + TemplateRenderer,
+    Log: Logger,
 {
-    pub fn new(query_executor: Q, template_loader: L) -> Self {
+    pub fn new(query_executor: Q, template_loader: L, logger: Log) -> Self {
         RequestProcessor {
             query_executor,
             template_loader,
+            logger,
         }
     }
 
@@ -140,32 +178,92 @@ where
         resolved_params: &[(String, String)],
         global_template_dir: Option<&str>,
     ) -> Result<String, String> {
+        self.logger.debug(
+            "processor",
+            &format!("Processing request for {}", config.uri),
+        );
+
         // Execute query
+        self.logger.debug(
+            "query",
+            &format!("Executing query: {}", config.query.as_str()),
+        );
         let results = self
             .query_executor
             .execute(&config.db_path, &config.query, resolved_params)
-            .map_err(|e| format!("query execution failed: {}", e))?;
+            .map_err(|e| {
+                self.logger.error("query", &format!("Query execution failed: {}", e));
+                format!("query execution failed: {}", e)
+            })?;
+
+        self.logger.debug(
+            "query",
+            &format!("Query returned {} rows", results.len()),
+        );
 
         // Load global templates if provided
         if let Some(dir) = global_template_dir {
-            self.template_loader.load_from_dir(dir).ok();
+            self.logger.debug("templates", &format!("Loading global templates from: {}", dir));
+            match self.template_loader.load_from_dir(dir) {
+                Ok(count) => {
+                    self.logger.info(
+                        "templates",
+                        &format!("Loaded {} global template(s) from '{}'", count, dir),
+                    );
+                }
+                Err(e) => {
+                    self.logger.warn(
+                        "templates",
+                        &format!("Failed to load global templates from '{}': {}", dir, e),
+                    );
+                }
+            }
         }
 
         // Load local templates
-        self.template_loader
-            .load_from_dir(resolved_template.directory())
-            .ok();
+        self.logger.debug(
+            "templates",
+            &format!("Loading local templates from: {}", resolved_template.directory()),
+        );
+        match self.template_loader.load_from_dir(resolved_template.directory()) {
+            Ok(count) => {
+                self.logger.debug(
+                    "templates",
+                    &format!("Loaded {} local template(s)", count),
+                );
+            }
+            Err(e) => {
+                self.logger.warn(
+                    "templates",
+                    &format!("Failed to load local templates: {}", e),
+                );
+            }
+        }
 
         // Register main template
+        self.logger.debug(
+            "templates",
+            &format!("Registering main template: {}", resolved_template.full_path()),
+        );
         self.template_loader
             .register_template("template", resolved_template.full_path())
-            .map_err(|e| format!("failed to register template: {}", e))?;
+            .map_err(|e| {
+                self.logger.error(
+                    "template",
+                    &format!("Failed to register template '{}': {}", resolved_template.full_path(), e),
+                );
+                format!("failed to register template: {}", e)
+            })?;
 
         // Render
+        self.logger.debug("render", "Rendering template with query results");
         let data = serde_json::json!({"results": results});
         self.template_loader
             .render("template", &data)
-            .map_err(|e| format!("rendering failed: {}", e))
+            .map_err(|e| {
+                self.logger.error("render", &format!("Template rendering failed: {}", e));
+                format!("rendering failed: {}", e)
+            })
     }
 }
 
@@ -248,6 +346,13 @@ mod tests {
         }
     }
 
+    struct MockLogger;
+    impl Logger for MockLogger {
+        fn log(&mut self, _level: LogLevel, _module: &str, _message: &str) {
+            // No-op for tests
+        }
+    }
+
     #[test]
     fn test_resolve_parameters_positional() {
         let bindings = vec![ParameterBinding::Positional {
@@ -306,7 +411,7 @@ mod tests {
             directory: "templates".to_string(),
         };
 
-        let mut processor = RequestProcessor::new(MockQueryExecutor, MockTemplateSystem);
+        let mut processor = RequestProcessor::new(MockQueryExecutor, MockTemplateSystem, MockLogger);
 
         let result = processor.process(&config, &resolved_template, &[], None);
 

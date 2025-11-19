@@ -250,15 +250,14 @@ extern "C" fn ngx_http_howto_commands_add_param(
 
 // HTTP request handler - correctness guaranteed by types (Ghost of Departed Proofs)
 http_request_handler!(howto_access_handler, |request: &mut http::Request| {
+    use adapters::NginxLogger;
+    use domain::Logger;
+
     let (doc_root, uri) = match get_doc_root_and_uri(request) {
         Ok(res) => res,
         Err(e) => {
-            logging::log(
-                request,
-                logging::LogLevel::Error,
-                "nginx",
-                &format!("Path resolution failed: {}", e),
-            );
+            let mut logger = NginxLogger::new(request);
+            logger.error("nginx", &format!("Path resolution failed: {}", e));
             return ngx::http::HTTPStatus::INTERNAL_SERVER_ERROR.into();
         }
     };
