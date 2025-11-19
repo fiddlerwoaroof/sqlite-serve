@@ -12,3 +12,5 @@ ngx_src
 logs/
 db.sqlite3
 .DS_Store
+result
+*~

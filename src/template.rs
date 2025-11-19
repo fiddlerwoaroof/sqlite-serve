@@ -28,13 +28,13 @@ fn load_templates_from_dir(reg: &mut Handlebars, dir_path: &str) -> std::io::Res
         }
 
         if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                            if let Err(e) = reg.register_template_file(name, &path) {
-                                eprintln!("Failed to register template {}: {}", path.display(), e);
-                            } else {
-                                count += 1;
-                            }
-                        }
-                    }
+            if let Err(e) = reg.register_template_file(name, &path) {
+                eprintln!("Failed to register template {}: {}", path.display(), e);
+            } else {
+                count += 1;
+            }
+        }
+    }
 
     Ok(count)
 }
