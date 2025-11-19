@@ -361,7 +361,7 @@ mod tests {
 
     struct MockLogger;
     impl Logger for MockLogger {
-        fn log(&mut self, _level: LogLevel, _module: &str, _message: &str) {
+        fn log(&self, _level: LogLevel, _module: &str, _message: &str) {
             // No-op for tests
         }
     }
