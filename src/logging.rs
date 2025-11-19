@@ -21,15 +21,10 @@ pub fn log(request: &mut Request, level: LogLevel, module: &str, message: &str) 
         LogLevel::Debug => 7, // NGX_LOG_DEBUG
     };
 
-    let r: *mut ngx::ffi::ngx_http_request_t = request.into();
-    unsafe {
-        let connection = (*r).connection;
-        if !connection.is_null() {
-            let log = (*connection).log;
-            if !log.is_null() {
-                ngx_log_error!(log_level, log, "[sqlite-serve:{}] {}", module, message);
-            }
-        }
+    // Use safe Request::log() method to get log pointer
+    let log = request.log();
+    if !log.is_null() {
+        ngx_log_error!(log_level, log, "[sqlite-serve:{}] {}", module, message);
     }
 }
 

@@ -54,9 +54,9 @@ pub fn process_request(
     );
 
     // Resolve parameters
-    let var_resolver = NginxVariableResolver::new(request);
+    let mut var_resolver = NginxVariableResolver::new(request);
     let resolved_params =
-        match domain::resolve_parameters(&validated_config.parameters, &var_resolver) {
+        match domain::resolve_parameters(&validated_config.parameters, &mut var_resolver) {
             Ok(params) => {
                 if !params.is_empty() {
                     logging::debug(

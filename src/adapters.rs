@@ -20,12 +20,8 @@ impl<'a> NginxVariableResolver<'a> {
 }
 
 impl<'a> VariableResolver for NginxVariableResolver<'a> {
-    fn resolve(&self, var_name: &str) -> Result<String, String> {
-        // SAFETY: We need mutable access but trait requires &self
-        // This is safe because nginx variables are read-only from our perspective
-        let request_ptr = self.request as *const Request as *mut Request;
-        let request = unsafe { &mut *request_ptr };
-        variable::resolve_variable(request, var_name)
+    fn resolve(&mut self, var_name: &str) -> Result<String, String> {
+        variable::resolve_variable(self.request, var_name)
     }
 }
 
