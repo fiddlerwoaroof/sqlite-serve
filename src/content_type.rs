@@ -37,10 +37,13 @@ pub fn negotiate_content_type(request: &Request) -> ContentType {
                     let json_pos = value_lower.find("application/json");
                     let html_pos = value_lower.find("text/html");
 
-                    match (json_pos, html_pos) {
-                        (Some(_), None) => return ContentType::Json,
-                        (Some(j), Some(h)) if j < h => return ContentType::Json,
-                        _ => {}
+                    if let (Some(_), None) = (json_pos, html_pos) {
+                        return ContentType::Json;
+                    }
+                    if let (Some(j), Some(h)) = (json_pos, html_pos)
+                        && j < h
+                    {
+                        return ContentType::Json;
                     }
                 }
             }
