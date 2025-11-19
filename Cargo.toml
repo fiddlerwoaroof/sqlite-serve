@@ -7,7 +7,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-ngx = "0.5.0"
+ngx = { version = "0.5.0", features = ["vendored"] }
 rusqlite = "0.37.0"
 handlebars = "6.3.2"
 serde = { version = "1.0", features = ["derive"] }
