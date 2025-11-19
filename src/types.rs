@@ -288,4 +288,168 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains(":"));
     }
+
+    // Additional edge case tests for SqlQuery
+    #[test]
+    fn test_sql_query_with_leading_whitespace() {
+        let query = SqlQuery::parse("  \t\n  SELECT * FROM books").unwrap();
+        assert!(query.as_str().contains("SELECT"));
+    }
+
+    #[test]
+    fn test_sql_query_with_trailing_whitespace() {
+        let query = SqlQuery::parse("SELECT * FROM books  \n\t  ").unwrap();
+        assert_eq!(query.as_str().trim(), "SELECT * FROM books");
+    }
+
+    #[test]
+    fn test_sql_query_mixed_case() {
+        let query = SqlQuery::parse("SeLeCt id, name FrOm books").unwrap();
+        assert!(query.as_str().contains("SeLeCt"));
+    }
+
+    #[test]
+    fn test_sql_query_rejects_drop() {
+        let result = SqlQuery::parse("DROP TABLE books");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sql_query_rejects_create() {
+        let result = SqlQuery::parse("CREATE TABLE books (id INT)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sql_query_rejects_alter() {
+        let result = SqlQuery::parse("ALTER TABLE books ADD COLUMN x");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sql_query_with_semicolon() {
+        // SELECT queries with semicolons are allowed (single statement)
+        let query = SqlQuery::parse("SELECT * FROM books;").unwrap();
+        assert!(query.as_str().contains("SELECT"));
+    }
+
+    #[test]
+    fn test_sql_query_only_whitespace() {
+        let result = SqlQuery::parse("   \t\n   ");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("empty"));
+    }
+
+    // Additional edge case tests for TemplatePath
+    #[test]
+    fn test_template_path_case_sensitive_extension() {
+        // .HBS (uppercase) should be rejected - only .hbs is valid
+        let result = TemplatePath::parse("template.HBS");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_template_path_multiple_dots() {
+        let path = TemplatePath::parse("my.template.backup.hbs").unwrap();
+        assert!(path.as_str().ends_with(".hbs"));
+    }
+
+    #[test]
+    fn test_template_path_hidden_file() {
+        let path = TemplatePath::parse(".hidden.hbs").unwrap();
+        assert_eq!(path.as_str(), ".hidden.hbs");
+    }
+
+    #[test]
+    fn test_template_path_no_extension() {
+        let result = TemplatePath::parse("template");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_template_path_wrong_extension() {
+        let result = TemplatePath::parse("template.handlebars");
+        assert!(result.is_err());
+    }
+
+    // Additional edge case tests for NginxVariable
+    #[test]
+    fn test_nginx_variable_with_underscore() {
+        let var = NginxVariable::parse("$arg_book_id").unwrap();
+        assert_eq!(var.name(), "arg_book_id");
+    }
+
+    #[test]
+    fn test_nginx_variable_with_numbers() {
+        let var = NginxVariable::parse("$arg_id123").unwrap();
+        assert_eq!(var.name(), "arg_id123");
+    }
+
+    #[test]
+    fn test_nginx_variable_common_patterns() {
+        // Test common nginx variable patterns
+        assert!(NginxVariable::parse("$request_uri").is_ok());
+        assert!(NginxVariable::parse("$http_host").is_ok());
+        assert!(NginxVariable::parse("$remote_addr").is_ok());
+        assert!(NginxVariable::parse("$query_string").is_ok());
+    }
+
+    #[test]
+    fn test_nginx_variable_dollar_in_middle() {
+        // Dollar sign in the middle should be allowed
+        let var = NginxVariable::parse("$weird$name").unwrap();
+        assert_eq!(var.as_str(), "$weird$name");
+    }
+
+    // Additional edge case tests for ParamName
+    #[test]
+    fn test_param_name_only_colon() {
+        let result = ParamName::parse(":");
+        // Single colon is valid - the name after : can be empty for positional
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_param_name_with_numbers() {
+        let param = ParamName::parse(":param123").unwrap();
+        assert_eq!(param.as_str(), ":param123");
+    }
+
+    #[test]
+    fn test_param_name_with_underscore() {
+        let param = ParamName::parse(":book_id").unwrap();
+        assert_eq!(param.as_str(), ":book_id");
+    }
+
+    #[test]
+    fn test_param_name_positional_is_empty() {
+        let param = ParamName::positional();
+        assert!(param.is_positional());
+        assert!(param.as_str().is_empty());
+    }
+
+    #[test]
+    fn test_param_name_named_not_positional() {
+        let param = ParamName::parse(":id").unwrap();
+        assert!(!param.is_positional());
+    }
+
+    // Additional edge case tests for DatabasePath
+    #[test]
+    fn test_database_path_with_directory() {
+        let path = DatabasePath::parse("/var/data/test.db").unwrap();
+        assert!(path.as_str().contains("test.db"));
+    }
+
+    #[test]
+    fn test_database_path_relative() {
+        let path = DatabasePath::parse("./data/test.db").unwrap();
+        assert!(path.as_str().contains("test.db"));
+    }
+
+    #[test]
+    fn test_database_path_just_filename() {
+        let path = DatabasePath::parse("test.db").unwrap();
+        assert_eq!(path.as_str(), "test.db");
+    }
 }
