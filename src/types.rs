@@ -106,37 +106,39 @@ impl NginxVariable {
     }
 }
 
-/// A SQL parameter name (starts with :)
+/// A SQL named parameter (always starts with : and is never empty)
+/// Positional parameters are represented by the absence of a ParamName in ParameterBinding
 #[derive(Debug, Clone)]
 pub struct ParamName(String);
 
 impl ParamName {
-    /// Parse a SQL parameter name
+    /// Parse a SQL named parameter (must start with : and have content after it)
     pub fn parse(name: impl Into<String>) -> Result<Self, String> {
         let name = name.into();
 
         if name.is_empty() {
-            Err("parameter name cannot be empty".to_string())
-        } else if !name.starts_with(':') {
-            Err(format!("parameter name must start with :: {}", name))
-        } else {
-            Ok(ParamName(name))
+            return Err("parameter name cannot be empty".to_string());
         }
-    }
 
-    /// Create an empty (positional) parameter name
-    #[allow(dead_code)]
-    pub fn positional() -> Self {
-        ParamName(String::new())
-    }
+        if !name.starts_with(':') {
+            return Err(format!("parameter name must start with :: {}", name));
+        }
 
-    #[allow(dead_code)]
-    pub fn is_positional(&self) -> bool {
-        self.0.is_empty()
-    }
+        // The name after : must not be empty
+        if name.len() == 1 {
+            return Err("parameter name after : cannot be empty".to_string());
+        }
 
+        Ok(ParamName(name))
+    }
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Get the parameter name without the : prefix
+    #[allow(dead_code)]
+    pub fn name_without_colon(&self) -> &str {
+        &self.0[1..]
     }
 }
 
@@ -267,13 +269,7 @@ mod tests {
     fn test_param_name_valid() {
         let param = ParamName::parse(":book_id").unwrap();
         assert_eq!(param.as_str(), ":book_id");
-    }
-
-    #[test]
-    fn test_param_name_positional() {
-        let param = ParamName::positional();
-        assert!(param.is_positional());
-        assert_eq!(param.as_str(), "");
+        assert_eq!(param.name_without_colon(), "book_id");
     }
 
     #[test]
@@ -399,33 +395,37 @@ mod tests {
     #[test]
     fn test_param_name_only_colon() {
         let result = ParamName::parse(":");
-        // Single colon is valid - the name after : can be empty for positional
-        assert!(result.is_ok());
+        // Single colon is invalid - the name of a named param should always be non-empty
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("after : cannot be empty"));
     }
 
     #[test]
     fn test_param_name_with_numbers() {
         let param = ParamName::parse(":param123").unwrap();
         assert_eq!(param.as_str(), ":param123");
+        assert_eq!(param.name_without_colon(), "param123");
     }
 
     #[test]
     fn test_param_name_with_underscore() {
         let param = ParamName::parse(":book_id").unwrap();
         assert_eq!(param.as_str(), ":book_id");
+        assert_eq!(param.name_without_colon(), "book_id");
     }
 
     #[test]
-    fn test_param_name_positional_is_empty() {
-        let param = ParamName::positional();
-        assert!(param.is_positional());
-        assert!(param.as_str().is_empty());
+    fn test_param_name_empty_string() {
+        let result = ParamName::parse("");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("cannot be empty"));
     }
 
     #[test]
-    fn test_param_name_named_not_positional() {
+    fn test_param_name_simple() {
         let param = ParamName::parse(":id").unwrap();
-        assert!(!param.is_positional());
+        assert_eq!(param.as_str(), ":id");
+        assert_eq!(param.name_without_colon(), "id");
     }
 
     // Additional edge case tests for DatabasePath
