@@ -19,9 +19,10 @@
           name = "nginx-src";
           src = pkgs.nginx.src;
           buildInputs = [
+            pkgs.llvmPackages.libclang.lib
             pkgs.pcre.dev
-            pkgs.zlib.dev
             pkgs.pkg-config
+            pkgs.zlib.dev
           ];
           buildPhase = "";
           installPhase = ''
@@ -39,11 +40,11 @@
           singleStep = false;
           dontStrip = true;
           buildInputs = [
+            nginx
             pkgs.pcre.dev
+            pkgs.pkg-config
             pkgs.sqlite
             pkgs.zlib.dev
-            pkgs.pkg-config
-            nginx
           ];
           preBuild = ''
             fw_orig_path="$PWD"
