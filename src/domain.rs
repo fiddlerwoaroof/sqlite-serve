@@ -61,13 +61,13 @@ pub fn resolve_template_path(config: &ValidatedConfig) -> ResolvedTemplate {
 
 /// Parameter resolution strategy (dependency injection)
 pub trait VariableResolver {
-    fn resolve(&self, var_name: &str) -> Result<String, String>;
+    fn resolve(&mut self, var_name: &str) -> Result<String, String>;
 }
 
 /// Resolve all parameters using the provided resolver
 pub fn resolve_parameters(
     bindings: &[ParameterBinding],
-    resolver: &dyn VariableResolver,
+    resolver: &mut dyn VariableResolver,
 ) -> Result<Vec<(String, String)>, String> {
     let mut resolved = Vec::new();
 
@@ -208,7 +208,7 @@ mod tests {
     // Mock implementations for testing
     struct MockVariableResolver;
     impl VariableResolver for MockVariableResolver {
-        fn resolve(&self, var_name: &str) -> Result<String, String> {
+        fn resolve(&mut self, var_name: &str) -> Result<String, String> {
             match var_name {
                 "$arg_id" => Ok("123".to_string()),
                 "$arg_genre" => Ok("Fiction".to_string()),
@@ -254,8 +254,8 @@ mod tests {
             variable: NginxVariable::parse("$arg_id").unwrap(),
         }];
 
-        let resolver = MockVariableResolver;
-        let resolved = resolve_parameters(&bindings, &resolver).unwrap();
+        let mut resolver = MockVariableResolver;
+        let resolved = resolve_parameters(&bindings, &mut resolver).unwrap();
 
         assert_eq!(resolved.len(), 1);
         assert_eq!(resolved[0].0, ""); // Positional (no name)
@@ -269,8 +269,8 @@ mod tests {
             variable: NginxVariable::parse("$arg_id").unwrap(),
         }];
 
-        let resolver = MockVariableResolver;
-        let resolved = resolve_parameters(&bindings, &resolver).unwrap();
+        let mut resolver = MockVariableResolver;
+        let resolved = resolve_parameters(&bindings, &mut resolver).unwrap();
 
         assert_eq!(resolved.len(), 1);
         assert_eq!(resolved[0].0, ":book_id");
@@ -283,8 +283,8 @@ mod tests {
             value: "constant".to_string(),
         }];
 
-        let resolver = MockVariableResolver;
-        let resolved = resolve_parameters(&bindings, &resolver).unwrap();
+        let mut resolver = MockVariableResolver;
+        let resolved = resolve_parameters(&bindings, &mut resolver).unwrap();
 
         assert_eq!(resolved.len(), 1);
         assert_eq!(resolved[0].1, "constant");

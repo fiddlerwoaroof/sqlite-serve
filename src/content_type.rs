@@ -21,6 +21,9 @@ impl ContentType {
 pub fn negotiate_content_type(request: &Request) -> ContentType {
     let r: *const ngx::ffi::ngx_http_request_t = request.into();
 
+    // SAFETY: Required to access NGINX request headers through C FFI.
+    // r is a valid request pointer. NGINX guarantees headers_in structure is valid.
+    // We iterate through the headers linked list, checking for null before dereferencing.
     unsafe {
         let headers_in = &(*r).headers_in;
 

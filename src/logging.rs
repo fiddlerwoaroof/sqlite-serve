@@ -22,6 +22,9 @@ pub fn log(request: &mut Request, level: LogLevel, module: &str, message: &str) 
     };
 
     let r: *mut ngx::ffi::ngx_http_request_t = request.into();
+    // SAFETY: Required to access NGINX's logging system through C FFI.
+    // r is a valid request pointer. We check for null pointers before dereferencing.
+    // NGINX guarantees connection and log pointers are valid when non-null.
     unsafe {
         let connection = (*r).connection;
         if !connection.is_null() {

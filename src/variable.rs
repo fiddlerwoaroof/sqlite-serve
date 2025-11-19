@@ -26,8 +26,12 @@ fn resolve_nginx_variable(request: &mut Request, var_name: &str) -> Result<Strin
         data: var_name_bytes.as_ptr() as *mut u8,
     };
 
+    // SAFETY: Required FFI call to NGINX C API to compute variable name hash.
+    // name.data points to valid UTF-8 bytes from var_name_bytes.
     let key = unsafe { ngx_hash_key(name.data, name.len) };
     let r: *mut ngx::ffi::ngx_http_request_t = request.into();
+    // SAFETY: Required FFI call to NGINX C API to look up variable by name and hash.
+    // r is a valid request pointer, name is valid ngx_str_t.
     let var_value = unsafe { ngx_http_get_variable(r, &mut name, key) };
 
     if var_value.is_null() {
@@ -35,6 +39,7 @@ fn resolve_nginx_variable(request: &mut Request, var_name: &str) -> Result<Strin
         return Err(format!("variable not found: {}", var_name));
     }
 
+    // SAFETY: var_value is non-null, NGINX guarantees it points to valid ngx_variable_value_t.
     let var_ref = unsafe { &*var_value };
     if var_ref.valid() == 0 {
         ngx_log_debug_http!(request, "variable value not valid: {}", var_name);
