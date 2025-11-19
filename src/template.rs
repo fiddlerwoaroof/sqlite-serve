@@ -46,6 +46,12 @@ pub struct HandlebarsAdapter {
 
 impl HandlebarsAdapter {
     pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl Default for HandlebarsAdapter {
+    fn default() -> Self {
         HandlebarsAdapter {
             registry: Handlebars::new(),
         }

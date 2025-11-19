@@ -13,9 +13,10 @@ impl DatabasePath {
         // For now, just validate it's not empty
         // In production, could check if file exists, is readable, etc.
         if path.as_os_str().is_empty() {
-            return Err("database path cannot be empty".to_string());
+            Err("database path cannot be empty".to_string())
+        } else {
+            Ok(DatabasePath(path.to_path_buf()))
         }
-        Ok(DatabasePath(path.to_path_buf()))
     }
 
     pub fn as_str(&self) -> &str {
@@ -34,15 +35,12 @@ impl SqlQuery {
         let trimmed = query.trim().to_uppercase();
 
         if trimmed.is_empty() {
-            return Err("query cannot be empty".to_string());
+            Err("query cannot be empty".to_string())
+        } else if !trimmed.starts_with("SELECT") {
+            Err("only SELECT queries are allowed".to_string())
+        } else {
+            Ok(SqlQuery(query))
         }
-
-        // Ensure it's a SELECT query (read-only)
-        if !trimmed.starts_with("SELECT") {
-            return Err("only SELECT queries are allowed".to_string());
-        }
-
-        Ok(SqlQuery(query))
     }
 
     pub fn as_str(&self) -> &str {
@@ -60,15 +58,12 @@ impl TemplatePath {
         let path = path.as_ref();
 
         if path.as_os_str().is_empty() {
-            return Err("template path cannot be empty".to_string());
+            Err("template path cannot be empty".to_string())
+        } else if path.extension().and_then(|e| e.to_str()) != Some("hbs") {
+            Err("template must be a .hbs file".to_string())
+        } else {
+            Ok(TemplatePath(path.to_path_buf()))
         }
-
-        // Ensure it's a .hbs file
-        if path.extension().and_then(|e| e.to_str()) != Some("hbs") {
-            return Err("template must be a .hbs file".to_string());
-        }
-
-        Ok(TemplatePath(path.to_path_buf()))
     }
 
     pub fn as_str(&self) -> &str {
@@ -86,20 +81,18 @@ impl NginxVariable {
         let name = name.into();
 
         if name.is_empty() {
-            return Err("variable name cannot be empty".to_string());
+            Err("variable name cannot be empty".to_string())
+        } else if !name.starts_with('$') {
+            Err(format!("variable name must start with $: {}", name))
+        } else {
+            // Get the part after $
+            let var_name = &name[1..];
+            if var_name.is_empty() {
+                Err("variable name after $ cannot be empty".to_string())
+            } else {
+                Ok(NginxVariable(name))
+            }
         }
-
-        if !name.starts_with('$') {
-            return Err(format!("variable name must start with $: {}", name));
-        }
-
-        // Get the part after $
-        let var_name = &name[1..];
-        if var_name.is_empty() {
-            return Err("variable name after $ cannot be empty".to_string());
-        }
-
-        Ok(NginxVariable(name))
     }
 
     pub fn as_str(&self) -> &str {
@@ -122,14 +115,12 @@ impl ParamName {
         let name = name.into();
 
         if name.is_empty() {
-            return Err("parameter name cannot be empty".to_string());
+            Err("parameter name cannot be empty".to_string())
+        } else if !name.starts_with(':') {
+            Err(format!("parameter name must start with :: {}", name))
+        } else {
+            Ok(ParamName(name))
         }
-
-        if !name.starts_with(':') {
-            return Err(format!("parameter name must start with :: {}", name));
-        }
-
-        Ok(ParamName(name))
     }
 
     /// Create an empty (positional) parameter name
