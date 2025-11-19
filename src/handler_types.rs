@@ -4,7 +4,6 @@ use crate::adapters::{NginxLogger, NginxVariableResolver, SqliteQueryExecutor};
 use crate::config::ModuleConfig;
 use crate::content_type::{ContentType, negotiate_content_type};
 use crate::domain::{Logger, RequestProcessor, ValidatedConfig};
-use crate::logging;
 use crate::nginx_helpers::{send_json_response, send_response};
 use crate::parsing;
 use crate::template::HandlebarsAdapter;
@@ -38,9 +37,8 @@ pub fn process_request(
     request: &mut ngx::http::Request,
     validated_config: &ValidatedConfig,
 ) -> Status {
-    let mut logger = NginxLogger::new(request);
-    
-    logger.debug(
+    // Log initial processing
+    NginxLogger::new(request).debug(
         "handler",
         &format!("Processing request for {}", validated_config.uri),
     );
@@ -48,7 +46,7 @@ pub fn process_request(
     // Resolve template path (pure function - cannot fail)
     let resolved_template = domain::resolve_template_path(&validated_config);
 
-    logger.debug(
+    NginxLogger::new(request).debug(
         "template",
         &format!("Resolved template: {}", resolved_template.full_path()),
     );
@@ -59,7 +57,7 @@ pub fn process_request(
         match domain::resolve_parameters(&validated_config.parameters, &mut var_resolver) {
             Ok(params) => {
                 if !params.is_empty() {
-                    logger.debug(
+                    NginxLogger::new(request).debug(
                         "params",
                         &format!("Resolved {} parameters", params.len()),
                     );
@@ -67,7 +65,7 @@ pub fn process_request(
                 params
             }
             Err(e) => {
-                logger.error("params", &format!("Parameter resolution failed: {}", e));
+                NginxLogger::new(request).error("params", &format!("Parameter resolution failed: {}", e));
                 return ngx::http::HTTPStatus::BAD_REQUEST.into();
             }
         };
@@ -101,16 +99,18 @@ fn execute_with_processor(
     request: &mut ngx::http::Request,
 ) -> String {
     let reg = HandlebarsAdapter::new();
-    let logger = NginxLogger::new(request);
 
-    let mut processor = RequestProcessor::new(SqliteQueryExecutor, reg, logger);
-
+    // Get global template directory first (before creating logger)
     let main_conf = Module::main_conf(request).expect("main config is none");
     let global_dir = if !main_conf.global_templates_dir.is_empty() {
         Some(main_conf.global_templates_dir.as_str())
     } else {
         None
     };
+
+    // Now create logger and processor
+    let logger = NginxLogger::new(request);
+    let mut processor = RequestProcessor::new(SqliteQueryExecutor, reg, logger);
 
     // Process through functional core
     match processor.process(config, resolved_template, resolved_params, global_dir) {
@@ -149,14 +149,13 @@ fn execute_json(
 ) -> String {
     use crate::domain::QueryExecutor;
 
-    let mut logger = NginxLogger::new(request);
-    let executor = SqliteQueryExecutor;
+    NginxLogger::new(request).debug("query", &format!("Executing query for JSON: {}", config.query.as_str()));
 
-    logger.debug("query", &format!("Executing query for JSON: {}", config.query.as_str()));
+    let executor = SqliteQueryExecutor;
 
     match executor.execute(&config.db_path, &config.query, resolved_params) {
         Ok(results) => {
-            logger.info(
+            NginxLogger::new(request).info(
                 "success",
                 &format!(
                     "Returned {} JSON results with {} params",
@@ -165,12 +164,12 @@ fn execute_json(
                 ),
             );
             serde_json::to_string_pretty(&results).unwrap_or_else(|e| {
-                logger.error("json", &format!("JSON serialization failed: {}", e));
+                NginxLogger::new(request).error("json", &format!("JSON serialization failed: {}", e));
                 "[]".to_string()
             })
         }
         Err(e) => {
-            logger.error("query", &format!("Query failed: {} - Error: {}", config.query.as_str(), e));
+            NginxLogger::new(request).error("query", &format!("Query failed: {} - Error: {}", config.query.as_str(), e));
             let error_obj = serde_json::json!({
                 "error": "Query execution failed",
                 "details": e
