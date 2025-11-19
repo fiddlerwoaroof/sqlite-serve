@@ -19,7 +19,6 @@
           name = "nginx-src";
           src = pkgs.nginx.src;
           buildInputs = [
-            pkgs.llvmPackages.libclang.lib
             pkgs.pcre.dev
             pkgs.pkg-config
             pkgs.zlib.dev
@@ -41,6 +40,7 @@
           dontStrip = true;
           buildInputs = [
             nginx
+            pkgs.llvmPackages.libclang.lib
             pkgs.pcre.dev
             pkgs.pkg-config
             pkgs.sqlite
