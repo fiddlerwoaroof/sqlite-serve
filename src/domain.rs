@@ -17,25 +17,25 @@ pub enum LogLevel {
 /// Logger trait for dependency injection (enables logging without Request)
 pub trait Logger {
     /// Log a message with context
-    fn log(&mut self, level: LogLevel, module: &str, message: &str);
+    fn log(&self, level: LogLevel, module: &str, message: &str);
 
     /// Convenience method for debug logging
-    fn debug(&mut self, module: &str, message: &str) {
+    fn debug(&self, module: &str, message: &str) {
         self.log(LogLevel::Debug, module, message);
     }
 
     /// Convenience method for info logging
-    fn info(&mut self, module: &str, message: &str) {
+    fn info(&self, module: &str, message: &str) {
         self.log(LogLevel::Info, module, message);
     }
 
     /// Convenience method for warn logging
-    fn warn(&mut self, module: &str, message: &str) {
+    fn warn(&self, module: &str, message: &str) {
         self.log(LogLevel::Warn, module, message);
     }
 
     /// Convenience method for error logging
-    fn error(&mut self, module: &str, message: &str) {
+    fn error(&self, module: &str, message: &str) {
         self.log(LogLevel::Error, module, message);
     }
 }

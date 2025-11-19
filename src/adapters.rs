@@ -38,7 +38,7 @@ impl<'a> NginxLogger<'a> {
 }
 
 impl<'a> Logger for NginxLogger<'a> {
-    fn log(&mut self, level: LogLevel, module: &str, message: &str) {
+    fn log(&self, level: LogLevel, module: &str, message: &str) {
         let log_level = match level {
             LogLevel::Error => 3, // NGX_LOG_ERR
             LogLevel::Warn => 4,  // NGX_LOG_WARN

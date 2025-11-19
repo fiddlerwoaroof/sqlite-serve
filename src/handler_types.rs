@@ -22,7 +22,8 @@ impl ValidConfigToken {
         let (doc_root, uri) = match get_doc_root_and_uri(request) {
             Ok(res) => res,
             Err(e) => {
-                NginxLogger::new(request).error("nginx", &format!("Path resolution failed: {}", e));
+                let mut logger = NginxLogger::new(request);
+                logger.error("nginx", &format!("Path resolution failed: {}", e));
                 return None;
             }
         };
