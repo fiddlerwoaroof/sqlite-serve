@@ -22,7 +22,11 @@ pub fn negotiate_content_type(request: &Request) -> ContentType {
     // Use safe iterator API to access headers
     for (key, value) in request.headers_in_iterator() {
         // NgxStr supports case-insensitive comparison with str
-        if key.to_str().map(|k| k.eq_ignore_ascii_case("accept")).unwrap_or(false) {
+        if key
+            .to_str()
+            .map(|k| k.eq_ignore_ascii_case("accept"))
+            .unwrap_or(false)
+        {
             // Convert NgxStr to str and process
             if let Ok(value_str) = value.to_str() {
                 let value_lower = value_str.to_lowercase();
