@@ -100,6 +100,7 @@ impl NginxVariable {
     }
 
     /// Get the variable name without the $ prefix
+    #[allow(dead_code)]
     pub fn name(&self) -> &str {
         &self.0[1..]
     }
@@ -124,10 +125,12 @@ impl ParamName {
     }
 
     /// Create an empty (positional) parameter name
+    #[allow(dead_code)]
     pub fn positional() -> Self {
         ParamName(String::new())
     }
 
+    #[allow(dead_code)]
     pub fn is_positional(&self) -> bool {
         self.0.is_empty()
     }

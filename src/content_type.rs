@@ -40,10 +40,10 @@ pub fn negotiate_content_type(request: &Request) -> ContentType {
                     if let (Some(_), None) = (json_pos, html_pos) {
                         return ContentType::Json;
                     }
-                    if let (Some(j), Some(h)) = (json_pos, html_pos) {
-                        if j < h {
-                            return ContentType::Json;
-                        }
+                    if let (Some(j), Some(h)) = (json_pos, html_pos)
+                        && j < h
+                    {
+                        return ContentType::Json;
                     }
                 }
             }
