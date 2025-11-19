@@ -136,6 +136,7 @@ impl ParamName {
     }
 
     /// Get the parameter name without the : prefix
+    #[allow(dead_code)]
     pub fn name_without_colon(&self) -> &str {
         &self.0[1..]
     }
