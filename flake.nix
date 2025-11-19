@@ -46,6 +46,8 @@
             pkgs.pkg-config
             pkgs.sqlite
             pkgs.zlib.dev
+            pkgs.glibc
+            pkgs.glibc.dev
           ];
           preBuild = ''
             export NGINX_BUILD_DIR="${nginx}/objs"
